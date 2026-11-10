@@ -662,8 +662,10 @@ function drawHUD(ctx, W, H, t) {
   const ph = PHASES[activePhase(t)], st = activeLayer(t);
   // the same soft background glow the on-screen caption has, so it reads over the model
   const glow = (fill, font, text, x, y) => {
-    ctx.font = font; ctx.shadowColor = '#cbcac7';
-    for (const b of [22, 12, 5]) { ctx.shadowBlur = b * s; ctx.fillStyle = '#cbcac7'; ctx.fillText(text, x, y); }
+    ctx.font = font; ctx.lineJoin = 'round'; ctx.shadowColor = '#cbcac7';
+    for (const [w, a, b] of [[16, .35, 18], [9, .7, 8], [5, .95, 2]]) {
+      ctx.shadowBlur = b * s; ctx.lineWidth = w * s; ctx.strokeStyle = `rgba(203,202,199,${a})`; ctx.strokeText(text, x, y);
+    }
     ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.fillStyle = fill; ctx.fillText(text, x, y);
   };
   glow('#5f5f60', `${17 * s}px ${FONT}`, `Chunk assembly · phase ${activePhase(t) + 1} of ${PHASES.length}`, 52 * s, 66 * s);
