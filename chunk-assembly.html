@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chunk Assembly</title>
+<style>
+  :root {
+    --bg: #cbcac7;
+    --ink: #1c1c1d;
+    --mute: #5f5f60;
+    --track: rgba(0, 0, 0, .14);
+    --fill: rgba(0, 0, 0, .62);
+    --accent: #c2410c;
+    --panel: rgba(244, 243, 240, .82);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  canvas { display: block; outline: none; }
+  #gl, #hud { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #hud { pointer-events: none; }
+  #cap { position: fixed; left: 28px; top: 24px; max-width: min(480px, calc(100vw - 32px)); pointer-events: none; }
+  #cap > * { text-shadow: 0 0 10px var(--bg), 0 0 18px var(--bg); }
+  #num { font-size: 12px; letter-spacing: .06em; color: var(--mute); font-variant-numeric: tabular-nums; }
+  #title { font-size: 30px; font-weight: 300; margin: 4px 0 8px; line-height: 1.12; }
+  #layer { font-size: 13px; color: #7a4930; font-variant-numeric: tabular-nums; }
+  #layer:empty { display: none; }
+  #tools { position: fixed; right: 20px; top: 20px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 40px); }
+  #bar { position: fixed; left: 20px; right: 20px; bottom: 18px; display: flex; align-items: center; gap: 12px; }
+  button, select { font: inherit; font-size: 12px; color: var(--ink); background: var(--panel); border: 1px solid rgba(0,0,0,.12);
+    border-radius: 6px; height: 30px; padding: 0 11px; cursor: pointer; backdrop-filter: blur(6px); }
+  button:hover, select:hover { background: #fff; }
+  button[aria-pressed="true"] { background: var(--ink); color: #f4f3f0; border-color: var(--ink); }
+  #play { width: 38px; padding: 0; display: grid; place-items: center; }
+  #play svg { width: 13px; height: 13px; fill: currentColor; }
+  #track { flex: 1; position: relative; height: 30px; cursor: pointer; touch-action: none; }
+  .seg { position: absolute; top: 13px; height: 4px; background: var(--track); border-radius: 2px; overflow: hidden; }
+  .seg i { position: absolute; inset: 0 auto 0 0; background: var(--fill); width: 0; }
+  .seg.on i { background: var(--accent); }
+  #head { position: absolute; top: 7px; width: 2px; height: 16px; background: var(--ink); border-radius: 1px; pointer-events: none; }
+  #tip { position: absolute; bottom: 30px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; background: var(--ink);
+    color: #f4f3f0; padding: 4px 8px; border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  #time { font-size: 12px; color: var(--mute); font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+  #load { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: var(--bg); font-size: 13px; color: var(--mute); transition: opacity .6s; z-index: 5; }
+  #loadbar { width: 240px; height: 4px; background: var(--track); border-radius: 2px; overflow: hidden; }
+  #loadbar div { height: 100%; width: 0; background: var(--fill); transition: width .2s; }
+  #exportMsg { position: fixed; top: 64px; right: 20px; background: var(--panel); border: 1px solid rgba(0,0,0,.12); border-radius: 6px;
+    backdrop-filter: blur(6px); padding: 7px 11px; font-size: 12px; display: none; z-index: 6; }
+  input[type=file] { display: none; }
+  @media (max-width: 640px) {
+    #cap { left: 16px; top: 16px; }
+    #title { font-size: 22px; }
+    #tools { top: auto; bottom: 60px; right: 16px; max-width: calc(100vw - 32px); }
+    #logoBtn, #export { display: none; }
+    #bar { left: 16px; right: 16px; bottom: 14px; gap: 8px; }
+    #speed { display: none; }
+    #time { min-width: 0; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas><canvas id="hud"></canvas>
+<div id="cap"><div id="num"></div><div id="title"></div><div id="layer"></div></div>
+<div id="tools">
+  <button id="orbit" aria-pressed="true" title="Slowly orbit the camera along the timeline">Orbit</button>
+  <button id="cut" aria-pressed="false" title="Ghost the outer layers">Cutaway</button>
+  <button id="tags" aria-pressed="true" title="Leader tags during the close-ups">Tags</button>
+  <button id="reset" title="Return to the guided camera">Reset view</button>
+  <button id="logoBtn" title="Add a logo to the exported video">Logo…</button><input id="logoFile" type="file" accept="image/*">
+  <button id="export" title="Render the sequence to a 1080p MP4">Export MP4</button>
+</div>
+<div id="exportMsg"></div>
+<div id="bar">
+  <button id="play" title="Play / pause (space)"></button>
+  <div id="track"><div id="head"></div><div id="tip"></div></div>
+  <select id="speed" title="Playback speed">
+    <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option>
+  </select>
+  <div id="time"></div>
+</div>
+<div id="load"><div id="loadtxt">Loading model…</div><div id="loadbar"><div></div></div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* =====================================================================
+   CONFIG: edit freely. Times are in seconds on the timeline clock.
+   ===================================================================== */
+const END_T = 29.8;              // total length (about 1 s of orbit after the reveal)
+const FPS = 30, OUT_W = 1920, OUT_H = 1080, BITRATE = 24e6;
+const RECENTER = [207, 25, 0];   // Rhino-space offset applied before the Z-up → Y-up rotation
+const FOV = 30;
+const ORBIT = { az0: -20, degPerSec: -3, el: 18 };   // azimuth in degrees from Rhino +X (−90 = looking at the front/section face)
+const SHADOW_GROUND = 0.16;       // opacity of the shadow-catcher under the model (0 = off)
+const DEFAULT_TRAVEL = 0.9;       // seconds each piece takes to fly in (capped by its layer's duration)
+
+// Materials: first rule whose regex matches the layer name wins. Edit colors here.
+const MATS = {
+  steel:   { color:'#7c3f24', metalness:.35, roughness:.72 },
+  metal:   { color:'#8e9296', metalness:.75, roughness:.42 },
+  pink:    { color:'#efc9c6', metalness:0,   roughness:.95 },
+  drywall: { color:'#f3f1ea', metalness:0,   roughness:.9 },
+  cement:  { color:'#bab09d', metalness:0,   roughness:.95 },
+  black:   { color:'#151515', metalness:0,   roughness:.7 },
+  rubber:  { color:'#2a2a2a', metalness:0,   roughness:.95 },
+  alum:    { color:'#d6d9dc', metalness:.6,  roughness:.32 },
+  glass:   { color:'#d3e8f3', metalness:0,   roughness:.05, opacity:.28 },
+  led:     { color:'#ffffff', metalness:.1,  roughness:.45 },   // per-instance color (black → gradient)
+  ledcab:  { color:'#333333', metalness:.4,  roughness:.6 },
+  concrete:{ color:'#a89f93', metalness:0,   roughness:.95, wet:'#5f5a54' },
+  stainless:{color:'#cfd2d6', metalness:.95, roughness:.22 },
+  castiron:{ color:'#3a3634', metalness:.55, roughness:.7 },
+  floor:   { color:'#d0d1d1', metalness:.1,  roughness:.7 },
+};
+const MAT_RULES = [
+  [/Glass|IGU/, 'glass'],
+  [/Display Modules/, 'led'],
+  [/LED Cabinets/, 'ledcab'],
+  [/Painted Black|Air and Water Barrier|Membrane/, 'black'],
+  [/Isolator|EPDM|Gasket/, 'rubber'],
+  [/Batt|Rigid Insulation|Pipe Insulation/, 'pink'],
+  [/Gypsum/, 'drywall'],
+  [/Cement Board/, 'cement'],
+  [/Concrete/, 'concrete'],
+  [/Stainless/, 'stainless'],
+  [/Cast Iron|Strainer|Overflow Drain/, 'castiron'],
+  [/Access Floor Panels/, 'floor'],
+  [/Rail|Clip|Rivet|Screw|Bolt|Fastener|Stud|Anchor|Standoff|Pedestal|Deck|Mesh|Sub-Girt|Lock|Bracket|Knife Plate|Cleat|Slip|Pan|Backing Plate|LED Support Frame|Stiffener|Pressure Plate/, 'metal'],
+  [/Aluminum|Panel|Frame(s)? *$|Window Frames|Mullion|Transom|Cap|Snap Cover|Sill|Jamb|Flashing|Base Shoe|Upstand/, 'alum'],
+  [/W\d|HSS|Truss|Rib|Girt|Rafter|Gusset|Bearing Plate|Fill Plate|Ledge|Corner Frame|Hanger|Girder|Beam|Tube/, 'steel'],
+  [/.*/, 'metal'],
+];
+
+// Methods: drop (from above), rise (Explosion A, from below), explode (Explosion B, spherical),
+// fade (in place), grow (clip plane rising in Z), sweep (clip plane along X).
+// Each layer entry: 'Component' or {c:'Component', method, dist, w (relative duration weight), sort:'z+'|'z-'|'x+'|'x-', cure, axis}
+const PHASES = [
+ { prefix:'10 Primary Structure', label:'Primary Structure', t:[0.0, 3.2], method:'drop', dist:45, layers:[
+   'Truss Bottom Chords (HSS 18x18)','Truss Top Chords (HSS 18x18)','Truss Diagonals (HSS 14x14)','Truss Gusset Plates',
+   'Floor Truss Chords (HSS 4x4) (Mezzanine)','Floor Truss Webs (HSS 3x3) (Mezzanine)','Floor Truss Gusset Plates (Mezzanine)',
+   'Floor Girders (W21)','Floor Beams (W21)','Floor Edge Ring Beams (W21)',
+   'Floor Beam Shear Tabs','Floor Beam Connection Bolts']},
+ { prefix:'20 Floor Slabs', label:'Floor Slabs', t:[2.8, 5.3], method:'drop', dist:14, layers:[
+   'Composite Metal Floor Deck (Truss Level)','Composite Deck Shear Studs','Slab Edge Pour Stops (Truss Level)','Pour Stop Expansion Anchors','Floor Slab Wire Mesh (Truss Level)',
+   {c:'Concrete Floor Topping (Truss Level)', method:'sweep', cure:true, w:1.4},
+   'Composite Metal Floor Deck (Mezzanine)','Slab Edge Pour Stops (Mezzanine)','Floor Slab Wire Mesh (Mezzanine)',
+   {c:'Concrete Floor Topping (Mezzanine)', method:'sweep', cure:true, w:1.4},
+   'Composite Metal Floor Deck','Slab Edge Pour Stops','Floor Slab Wire Mesh',
+   {c:'Concrete Floor Topping and Curbs', method:'sweep', cure:true, w:1.4}]},
+ { prefix:'30 Shell Framing', label:'Shell Framing', t:[5.0, 8.7], method:'drop', dist:40, layers:[
+   'Outer Wall Ribs (W18)','Wall Base Corner Frames (W6)','Corner Frame Hangers (L3x3)','Corner Frame Slip Connections','Outer Wall Top Ribs (W12)',
+   'Inner Shell Ribs (W18)','Inner Shell Branch Ribs (Built-Up Plate)','Second Facade Ribs (HSS 8x8)','Second Facade Girts (HSS 4x4)',
+   'Roof Ledge Beams (W8X31)','Roof Ledge Angles (L4x4)','Ledge Fill Plates','Roof Glazing Steel Rafters (HSS 8x4)','Sloped Glazing Steel Tubes',
+   'Rafter Bearing Plates','Gutter Pan Support Brackets',{c:'Rainscreen Standoffs', method:'explode', dist:12}]},
+ { prefix:'40 Soffits', label:'Soffits', t:[8.4, 10.3], method:'rise', dist:14, layers:[
+   'Soffit Sub-Girts','Soffit Sub-Girt Clip Angles','Soffit Sub-Girt Bolts','Soffit Hanger Rails','Soffit Hanger Rails (Mezzanine)','Truss Soffit Hanger Rails',
+   'Soffit Aluminum Brackets','Soffit Thermal Isolator Pads','Truss Soffit Isolator Pads','Truss Soffit Clip Brackets','Soffit Bracket Screws',
+   'Soffit Hook Clips','Soffit Slide Clips','Soffit Panels','Soffit Panels (Mezzanine)','Truss Soffit Panels','Soffit Clip Rivets']},
+ { prefix:'50 Exterior Wall', label:'Exterior Wall', t:[10.0, 16.6], method:'explode', dist:22, layers:[
+   'Outer Wall Cement Board Sheathing','Outer Wall Sheathing Fasteners','Outer Wall Air and Water Barrier','Outer Wall Batt Insulation',
+   {c:'Outer Wall Bracket Isolator Pads', w:1.6},{c:'Outer Wall Rail Brackets', w:1.6},{c:'Outer Wall Panel Hanger Rails', method:'grow', w:1.6},
+   {c:'Outer Wall Panel Hook Clips', w:1.6},{c:'Outer Wall Panel Slide Clips', w:1.6},{c:'Outer Wall Panel Stiffeners', w:1.6},
+   {c:'Outer Wall Aluminum Panels', w:2.2},{c:'Outer Wall Clip Rivets and Screws', w:1.6},
+   'Bent Corner Panels','Soffit Corner Panels','Fin Interior Aluminum Panels',
+   'Inner Shell Cement Board Sheathing','Inner Shell Air and Water Barrier','Inner Shell Batt Insulation','Inner Shell Bracket Isolator Pads',
+   'Inner Shell Rail Brackets',{c:'Inner Shell Panel Hanger Rails', method:'grow'},'Inner Shell Panel Hook Clips','Inner Shell Panel Slide Clips',
+   'Inner Shell Aluminum Panels','Inner Shell Clip Rivets and Screws','Inner Shell Opening Closure Panels',
+   'Second Facade Inner Aluminum Panels','Second Facade Outer Aluminum Panels']},
+ { prefix:'60 Interior Floors', label:'Interior Floors', t:[16.3, 18.2], method:'drop', dist:8, layers:[
+   'Access Floor Pedestals (Truss Level)','Raised Access Floor Panels (Truss Level)',
+   {c:'Floor Waterproofing Membrane (Mezzanine)', method:'fade'},'Floor Rigid Insulation (Mezzanine)','Floor Cement Board Backing (Mezzanine)','Access Floor Pedestals (Mezzanine)','Raised Access Floor Panels (Mezzanine)',
+   {c:'Floor Waterproofing Membrane', method:'fade'},'Floor Rigid Insulation','Floor Cement Board Backing','Access Floor Pedestals','Raised Access Floor Panels']},
+ { prefix:'65 Interior Walls', label:'Interior Walls', t:[17.9, 19.8], method:'rise', dist:10, layers:[
+   'Outer Wall Interior Batt Insulation','Outer Wall Interior Cement Board','Outer Wall Gypsum Board',
+   'Inner Shell Interior Batt Insulation','Inner Shell Interior Cement Board','Inner Shell Gypsum Board']},
+ { prefix:'70 LED Wall', label:'LED Wall', t:[19.5, 22.6], method:'explode', dist:16, layers:[
+   'LED Frame Knife Plate Anchors','LED Support Frame (HSS 4x4)','LED Wall Backing Batt Insulation','LED Wall Backing Board (Painted Black)',
+   'LED Standoff Arms',{c:'LED Mounting Rails (HSS 2x2)', method:'grow'},'LED Mounting Brackets (L2x2)',{c:'LED Cabinets', w:1.5},'LED Cabinet Locks']},
+ { prefix:'80 Roof Drainage', label:'Roof Drainage', t:[22.4, 24.3], method:'drop', dist:10, layers:[
+   'Gutter Support Pans','Gutter Backing Plates','Gutter Rigid Insulation',{c:'Gutter Self-Healing Membrane', method:'fade'},'Gutter Liner Cleats',
+   'Gutter Liners (Stainless)','Gutter Flashing Upstands','Gutter Outlets (Stainless)','Outlet Dome Strainers','Overflow Drains',
+   'Rain Leaders (Cast Iron)','Rain Leader Pipe Insulation']},
+ { prefix:'55 Glazing', label:'Glazing', t:[24.0, 26.3], method:'drop', dist:12, layers:[
+   'Sloped Glazing Sill Flashing','Sloped Glazing Sills','Sloped Glazing Mullions','Sloped Glazing Transoms','Sloped Glazing Thermal Isolators',
+   {c:'Sloped Glazing EPDM Gaskets', method:'fade'},'Sloped Glazing IGUs','Sloped Glazing Pressure Plates','Sloped Glazing Snap Covers','Sloped Glazing Sill Caps',
+   'Roof Glazing Mullions','Roof Glazing Transoms','Roof Glazing IGUs',
+   'Wall Window Frames','Wall Window Glass','Wall Window Jamb Closures','Mezzanine Guard Base Shoe','Mezzanine Guard Glass']},
+ { prefix:'70 LED Wall', label:'LED Display Modules', t:[26.0, 27.9], method:'explode', dist:8, layers:[
+   {c:'LED Display Modules', travel:0.6}]},
+];
+// LED colour reveal across the wall (per instance)
+const REVEAL = { layer:'70 LED Wall::LED Display Modules', t:[27.0, 28.8], colors:['#1d3bff','#8a2be2','#ff2a2a'], glow:1.4, sweep:0.55 };
+
+// Camera push-ins. Window = from the start of `from` (minus padIn) to the end of `to` (plus padOut).
+// focus: 'hero' = Rhino Y −50…−42.2, Z 62…66 strip; 'roof' = glass roof at the front section.
+const PUSH = [
+  { name:'hero', from:'50 Exterior Wall::Outer Wall Bracket Isolator Pads', to:'50 Exterior Wall::Outer Wall Clip Rivets and Screws',
+    padIn:0.9, padOut:0.5, az:-62, el:12, dist:26, tagRadius:14 },
+  { name:'roof', from:'80 Roof Drainage::Gutter Support Pans', to:'55 Glazing::Roof Glazing IGUs',
+    padIn:0.9, padOut:0.4, az:-75, el:24, dist:48, tagRadius:22 },
+];
+// Optional automatic ghosting (e.g. while interior layers arrive). Off by default; the front section is open.
+const GHOST_WINDOWS = [
+  // { match:/^50 Exterior Wall::(Outer Wall|Second Facade|Bent|Soffit Corner|Fin)/, t:[16.0, 22.8], alpha:0.15 },
+];
+const CUTAWAY_MATCH = /^50 Exterior Wall::(Outer Wall|Second Facade|Bent|Soffit Corner|Fin)|^30 Shell Framing::(Outer Wall|Second Facade)/;
+
+/* ===================================================================== */
+
+const $ = id => document.getElementById(id);
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+const easeOut = x => 1 - Math.pow(1 - clamp01(x), 3);
+const lerp = (a, b, t) => a + (b - a) * t;
+const comp = name => name.split('::')[1] || name;
+
+// ---------- renderer / scene ----------
+const glCanvas = $('gl'), hudCanvas = $('hud'), hud = hudCanvas.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#cbcac7');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 1, 5000);
+const controls = new OrbitControls(camera, glCanvas);
+controls.enableDamping = false;
+
+const rootY = new THREE.Group(); rootY.rotation.x = -Math.PI / 2; scene.add(rootY);   // Z-up → Y-up
+const root = new THREE.Group(); root.position.set(...RECENTER); rootY.add(root);       // children are in raw Rhino coords
+scene.updateMatrixWorld(true);
+const toThree = v => new THREE.Vector3(v[0], v[1], v[2]).applyMatrix4(root.matrixWorld);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9b4ac, 0.55));
+const sun = new THREE.DirectionalLight(0xffffff, 2.6);
+sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+scene.add(sun, sun.target);
+
+// ---------- shader patch: per-piece offset/alpha from a state texture ----------
+const VERT_HEAD = `
+uniform highp sampler2D uState; uniform int uStateW;
+#ifdef PIECE_ATTR
+attribute float aPiece;
+#endif
+varying float vPA; varying vec3 vRP;
+`;
+const VERT_PROJ = `
+#ifdef PIECE_ATTR
+  int pid = int(aPiece + 0.5);
+#else
+  int pid = gl_InstanceID;
+#endif
+  vec4 st = texelFetch(uState, ivec2(pid % uStateW, pid / uStateW), 0);
+  vPA = st.w;
+  vec4 mvPosition = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+#endif
+  mvPosition.xyz += st.xyz;
+  vRP = mvPosition.xyz;
+  mvPosition = modelViewMatrix * mvPosition;
+  gl_Position = projectionMatrix * mvPosition;
+  if (vPA < 0.003) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+`;
+const WORLDPOS = `
+#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0
+  vec4 worldPosition = modelMatrix * vec4(vRP, 1.0);
+#endif
+`;
+const FRAG_HEAD = `
+uniform float uLayerAlpha; uniform vec4 uGrow; uniform float uGlow;
+varying float vPA; varying vec3 vRP;
+`;
+function patchMaterial(mat, U, depth) {
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = VERT_HEAD + sh.vertexShader
+      .replace('#include <project_vertex>', VERT_PROJ)
+      .replace('#include <worldpos_vertex>', WORLDPOS);
+    let f = FRAG_HEAD + sh.fragmentShader.replace('void main() {', 'void main() {\n  if (dot(vRP, uGrow.xyz) > uGrow.w) discard;');
+    if (!depth) {
+      f = f.replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\n  diffuseColor.a *= clamp(vPA, 0.0, 1.0) * uLayerAlpha;');
+      if (mat.defines && 'LED' in mat.defines)
+        f = f.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vColor.rgb * uGlow;');
+    }
+    sh.fragmentShader = f;
+  };
+  mat.customProgramCacheKey = () => (depth ? 'd' : 'm') + JSON.stringify(mat.defines || {});
+}
+
+// ---------- data loading ----------
+async function unpack(name) {
+  const b64 = window.CHUNK_DATA && window.CHUNK_DATA[name];
+  if (!b64) throw new Error('Missing ' + name + ' in chunk_data.js');
+  const res = await fetch('data:application/octet-stream;base64,' + b64);
+  const buf = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  window.CHUNK_DATA[name] = null; // free the string
+  return buf;
+}
+const loader = new GLTFLoader();
+const parseGLB = buf => new Promise((ok, err) => loader.parse(buf, '', ok, err));
+const setProgress = (txt, f) => { $('loadtxt').textContent = txt; $('loadbar').firstChild.style.width = (f * 100).toFixed(0) + '%'; };
+
+const LAYERS = new Map();   // full name → layer
+function getLayer(name) {
+  if (!LAYERS.has(name)) LAYERS.set(name, { name, parts: [], pieces: [], step: null, bbox: new THREE.Box3() });
+  return LAYERS.get(name);
+}
+function matKeyFor(name) { const c = comp(name); for (const [re, k] of MAT_RULES) if (re.test(c)) return k; return 'metal'; }
+
+function makePart(layer, mesh, n, centers) {
+  const W = Math.min(n, 1024), H = Math.ceil(n / W);
+  const data = new Float32Array(W * H * 4);
+  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.FloatType);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.needsUpdate = true;
+  const U = { uState: { value: tex }, uStateW: { value: W }, uLayerAlpha: { value: 1 }, uGrow: { value: new THREE.Vector4(0, 0, 0, 1) }, uGlow: { value: 0 } };
+  const mk = matKeyFor(layer.name), spec = MATS[mk];
+  const mat = new THREE.MeshStandardMaterial({ color: spec.color, metalness: spec.metalness, roughness: spec.roughness, side: THREE.DoubleSide });
+  mat.defines = {}; if (!mesh.isInstancedMesh) mat.defines.PIECE_ATTR = ''; if (mk === 'led') mat.defines.LED = '';
+  if (spec.opacity != null) { mat.opacity = spec.opacity; mat.transparent = true; mat.depthWrite = false; }
+  patchMaterial(mat, U, false);
+  const dmat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  dmat.defines = mesh.isInstancedMesh ? {} : { PIECE_ATTR: '' };
+  patchMaterial(dmat, U, true);
+  mesh.material = mat; mesh.customDepthMaterial = dmat;
+  mesh.castShadow = spec.opacity == null; mesh.receiveShadow = true;
+  mesh.frustumCulled = false; mesh.visible = false;
+  root.add(mesh);
+  const part = { mesh, mat, U, tex, data, n, centers, matKey: mk, baseOpacity: spec.opacity ?? 1, restWritten: false };
+  for (let i = 0; i < n; i++) {
+    const c = [centers[i * 3], centers[i * 3 + 1], centers[i * 3 + 2]];
+    layer.pieces.push({ part, i, c });
+    layer.bbox.expandByPoint(new THREE.Vector3(...c));
+  }
+  layer.parts.push(part);
+  return part;
+}
+
+function mergeLayer(name, meshes) {
+  let nv = 0, ni = 0;
+  for (const m of meshes) { const g = m.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  const pos = new Float32Array(nv * 3), piece = new Float32Array(nv), idx = new Uint32Array(ni), centers = new Float32Array(meshes.length * 3);
+  let vo = 0, io = 0;
+  meshes.forEach((m, k) => {
+    const g = m.geometry, p = g.attributes.position, e = m.matrixWorld.elements;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), o = (vo + i) * 3;
+      pos[o] = e[0] * x + e[4] * y + e[8] * z + e[12];
+      pos[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+      pos[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+      piece[vo + i] = k;
+    }
+    if (g.index) { const ix = g.index; for (let i = 0; i < ix.count; i++) idx[io + i] = ix.getX(i) + vo; io += ix.count; }
+    else { for (let i = 0; i < p.count; i++) idx[io + i] = vo + i; io += p.count; }
+    centers[k * 3] = e[12]; centers[k * 3 + 1] = e[13]; centers[k * 3 + 2] = e[14];
+    vo += p.count; g.dispose();
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aPiece', new THREE.BufferAttribute(piece, 1));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  geo.computeVertexNormals(); geo.computeBoundingBox();
+  const layer = getLayer(name);
+  makePart(layer, new THREE.Mesh(geo), meshes.length, centers);
+  layer.bbox.union(geo.boundingBox);
+  layer.geoBox = (layer.geoBox || new THREE.Box3()).union(geo.boundingBox);
+}
+
+// the model ships as one large script; fetch it with a progress bar, then run it
+async function loadData() {
+  if (window.CHUNK_DATA) return;
+  const tag = (src) => new Promise((ok, err) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => err(new Error('Could not load the model (chunk_data.js)')); document.head.appendChild(s); });
+  let res = null;
+  try { res = await fetch('chunk_data.js'); } catch (e) { /* opened from disk: no fetch, plain script tag instead */ }
+  if (!res || !res.ok) { setProgress('Downloading model…', 0.3); return tag('chunk_data.js'); }
+  const total = +res.headers.get('content-length') || 0, rd = res.body.getReader(), parts = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    parts.push(value); got += value.length;
+    setProgress(`Downloading model… ${(got / 1e6).toFixed(0)} MB`, total ? 0.6 * got / total : 0);
+  }
+  setProgress('Unpacking model…', 0.6);
+  const url = URL.createObjectURL(new Blob(parts, { type: 'text/javascript' }));
+  parts.length = 0;
+  await tag(url);
+  URL.revokeObjectURL(url);
+}
+async function loadAll() {
+  await loadData();
+  const glbs = [10, 20, 30, 40, 50, 55, 60, 65, 70, 80].map(p => `phase_${p}.glb`);
+  const total = glbs.length + 2; let done = 0;
+  for (const f of glbs) {
+    setProgress('Building ' + f.replace('.glb', '').replace('_', ' ') + '…', 0.6 + 0.4 * done / total);
+    const gltf = await parseGLB(await unpack(f));
+    gltf.scene.updateMatrixWorld(true);
+    const byLayer = new Map();
+    gltf.scene.traverse(o => { if (o.isMesh) { const L = o.userData.layer || o.parent?.userData?.layer; if (!L) return; if (!byLayer.has(L)) byLayer.set(L, []); byLayer.get(L).push(o); } });
+    for (const [L, ms] of byLayer) mergeLayer(L, ms);
+    ++done; await new Promise(r => setTimeout(r));
+  }
+  setProgress('Placing instances…', 0.6 + 0.4 * done / total);
+  const protos = await parseGLB(await unpack('protos.glb'));
+  protos.scene.updateMatrixWorld(true);
+  const protoMap = new Map();
+  protos.scene.traverse(o => { if (o.isMesh) { const d = o.userData.def || o.parent?.userData?.def; if (d) { o.geometry.computeVertexNormals(); protoMap.set(d, { geo: o.geometry, M: o.matrixWorld.clone() }); } } });
+  const inst = JSON.parse(new TextDecoder().decode(await unpack('instances.json')));
+  const groups = new Map();
+  for (const it of inst.instances) { const k = it.layer + '|' + it.def; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
+  const M = new THREE.Matrix4();
+  for (const [k, list] of groups) {
+    const [L, def] = k.split('|'); const pr = protoMap.get(def);
+    if (!pr) { console.warn('No proto for', def); continue; }
+    const im = new THREE.InstancedMesh(pr.geo, null, list.length);
+    const centers = new Float32Array(list.length * 3);
+    list.forEach((it, i) => {
+      M.set(...it.m).multiply(pr.M); im.setMatrixAt(i, M);
+      centers[i * 3] = M.elements[12]; centers[i * 3 + 1] = M.elements[13]; centers[i * 3 + 2] = M.elements[14];
+    });
+    if (matKeyFor(L) === 'led') { for (let i = 0; i < list.length; i++) im.setColorAt(i, new THREE.Color(0.02, 0.02, 0.02)); }
+    im.instanceMatrix.needsUpdate = true;
+    const layer = getLayer(L);
+    makePart(layer, im, list.length, centers);
+  }
+  setProgress('Building timeline…', 1);
+}
+
+// ---------- timeline ----------
+const STEPS = [];      // ordered steps
+let MODEL_BOX = new THREE.Box3(), MODEL_C = new THREE.Vector3();
+function buildTimeline() {
+  for (const L of LAYERS.values()) MODEL_BOX.union(L.bbox);
+  MODEL_BOX.getCenter(MODEL_C);
+  const used = new Set();
+  PHASES.forEach((ph, pi) => {
+    const entries = ph.layers.map(e => typeof e === 'string' ? { c: e } : e)
+      .map(e => ({ ...e, name: ph.prefix + '::' + e.c }))
+      .filter(e => { if (!LAYERS.has(e.name)) { console.info('Not in model (skipped):', e.name); return false; } return true; });
+    // any layer of this prefix not listed anywhere gets appended (only on the phase's first appearance)
+    if (!PHASES.slice(0, pi).some(p => p.prefix === ph.prefix))
+      for (const n of LAYERS.keys()) if (n.startsWith(ph.prefix + '::') && !PHASES.some(p => p.prefix === ph.prefix && p.layers.some(e => (typeof e === 'string' ? e : e.c) === comp(n)))) {
+        console.warn('Unscheduled layer appended:', n); entries.push({ c: comp(n), name: n });
+      }
+    const [s, e] = ph.t, span = e - s;
+    const W = entries.reduce((a, x) => a + (x.w || 1), 0);
+    let cum = 0;
+    entries.forEach(en => {
+      const w = en.w || 1;
+      const start = s + (cum / W) * span * 0.78;
+      const dur = Math.min(e - start, Math.max(0.6, (w / W) * span * 2.4));
+      cum += w;
+      const layer = LAYERS.get(en.name); used.add(en.name);
+      const method = en.method || ph.method;
+      const step = { layer, phase: pi, start, dur, end: start + dur, method, dist: en.dist ?? ph.dist, cure: !!en.cure,
+                     travel: Math.min(en.travel ?? DEFAULT_TRAVEL, dur * 0.7), sort: en.sort || 'z+' };
+      layer.step = step; STEPS.push(step);
+      // arrival order
+      const key = { 'z+': p => p.c[2], 'z-': p => -p.c[2], 'x+': p => p.c[0], 'x-': p => -p.c[0] }[step.sort];
+      const order = layer.pieces.slice().sort((a, b) => key(a) - key(b));
+      const n = order.length, stag = n > 1 ? (dur - step.travel) / (n - 1) : 0;
+      order.forEach((p, r) => { p.t0 = start + r * stag; });
+      // per-piece fly-in offsets
+      for (const p of layer.pieces) {
+        let d;
+        if (method === 'drop') d = [0, 0, step.dist];
+        else if (method === 'rise') d = [0, 0, -step.dist];
+        else if (method === 'explode') {
+          const v = new THREE.Vector3(p.c[0] - MODEL_C.x, p.c[1] - MODEL_C.y, p.c[2] - MODEL_C.z);
+          const h = Math.hypot(v.x, v.y);
+          if (v.length() < 2 || h < 1) v.set(0, 0, 1); else v.normalize();
+          d = [v.x * step.dist, v.y * step.dist, v.z * step.dist];
+        } else d = [0, 0, 0];
+        p.d = d;
+      }
+      if (method === 'grow' || method === 'sweep') {
+        const bb = layer.geoBox || layer.bbox;
+        step.axis = method === 'grow' ? [0, 0, 1] : [1, 0, 0];
+        step.g0 = method === 'grow' ? bb.min.z - 0.1 : bb.min.x - 0.1;
+        step.g1 = method === 'grow' ? bb.max.z + 0.1 : bb.max.x + 0.1;
+      }
+      if (step.cure) for (const part of layer.parts) part.cureFrom = new THREE.Color(MATS.concrete.wet), part.cureTo = new THREE.Color(MATS.concrete.color);
+    });
+    ph.steps = STEPS.filter(st => st.phase === pi);
+  });
+  for (const n of LAYERS.keys()) if (!used.has(n)) console.warn('Layer not in timeline (hidden):', n);
+
+  // phase camera keys
+  const fit = box => { const s = box.getSize(new THREE.Vector3()); const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    return Math.max(s.z / (2 * t), Math.max(s.x, s.y) / (2 * t * 16 / 9)) * 1.18 + Math.max(s.x, s.y) * 0.5; };
+  const modelFit = fit(MODEL_BOX);
+  PHASES.forEach(ph => {
+    const box = new THREE.Box3(); ph.steps.forEach(st => box.union(st.layer.bbox));
+    if (box.isEmpty()) box.copy(MODEL_BOX);
+    const c = box.getCenter(new THREE.Vector3()).lerp(MODEL_C, 0.25);
+    ph.cam = { t: ph.t[0], target: c, dist: THREE.MathUtils.clamp(fit(box), modelFit * 0.45, modelFit), el: ph.el ?? ORBIT.el };
+  });
+  CAM_END = { t: END_T - 2.4, target: MODEL_C.clone(), dist: modelFit, el: ORBIT.el };
+
+  // push-ins
+  for (const p of PUSH) {
+    const a = LAYERS.get(p.from)?.step, b = LAYERS.get(p.to)?.step;
+    if (!a || !b) { console.warn('Push-in layers missing', p.name); p.off = true; continue; }
+    p.t0 = a.start - p.padIn; p.t1 = b.end + p.padOut;
+    let pts = [];
+    if (p.name === 'hero') {
+      for (const n of ['50 Exterior Wall::Outer Wall Aluminum Panels', '50 Exterior Wall::Outer Wall Rail Brackets'])
+        LAYERS.get(n)?.pieces.forEach(q => { if (q.c[1] <= -42.2 && q.c[1] >= -51 && q.c[2] >= 58 && q.c[2] <= 70) pts.push(q.c); });
+      if (!pts.length) pts.push([MODEL_C.x, -46, 64]);
+    } else {
+      for (const n of ['55 Glazing::Roof Glazing IGUs', '55 Glazing::Sloped Glazing IGUs', '80 Roof Drainage::Gutter Liners (Stainless)'])
+        LAYERS.get(n)?.pieces.forEach(q => pts.push(q.c));
+      const yMin = Math.min(...pts.map(q => q[1]));
+      pts = pts.filter(q => q[1] < yMin + 12);
+    }
+    const c = pts.reduce((s, q) => s.add(new THREE.Vector3(...q)), new THREE.Vector3()).divideScalar(Math.max(1, pts.length));
+    p.target = c;
+    // tags: one per layer that starts inside the window; anchor = piece nearest the focus
+    p.tags = [];
+    for (const st of STEPS) {
+      if (st.start < p.t0 || st.start > p.t1 - 0.3) continue;
+      let best = null, bd = Infinity;
+      for (const q of st.layer.pieces) { const dd = Math.hypot(q.c[0] - c.x, q.c[1] - c.y, q.c[2] - c.z); if (dd < bd) { bd = dd; best = q; } }
+      if (best && bd < p.tagRadius) p.tags.push({ label: comp(st.layer.name), piece: best, tOn: best.t0 + st.travel });
+    }
+  }
+}
+let CAM_END;
+
+// ---------- per-frame state ----------
+let T = 0, ghostLive = false, autoCam = true, orbitOn = true, tagsOn = true, lastAppliedT = -1;
+function applyTime(t, force) {
+  T = t;
+  for (const st of STEPS) {
+    const L = st.layer;
+    const ghost = layerGhost(L.name, t);
+    const state = t < st.start ? 0 : t >= st.end ? 2 : 1;
+    for (const part of L.parts) {
+      part.mesh.visible = state > 0;
+      if (state === 0) { part.restWritten = false; continue; }
+      const d = part.data;
+      if (state === 2 && part.restWritten && !force) { /* static */ }
+      else {
+        let changed = false;
+        for (const p of L.pieces) {
+          if (p.part !== part) continue;
+          const o = p.i * 4;
+          let a, k;
+          if (st.method === 'grow' || st.method === 'sweep') { a = smooth((t - st.start) / 0.25); k = 0; }
+          else { const u = (t - p.t0) / st.travel; a = state === 2 ? 1 : smooth(u / 0.6); k = state === 2 ? 0 : 1 - easeOut(u); }
+          d[o] = p.d[0] * k; d[o + 1] = p.d[1] * k; d[o + 2] = p.d[2] * k; d[o + 3] = a; changed = true;
+        }
+        if (changed) part.tex.needsUpdate = true;
+        part.restWritten = state === 2;
+      }
+      // grow / sweep clip plane
+      if (st.axis) {
+        const lv = state === 2 ? 1e9 : lerp(st.g0, st.g1, smooth((t - st.start) / st.dur));
+        part.U.uGrow.value.set(st.axis[0], st.axis[1], st.axis[2], lv);
+      }
+      // concrete cure
+      if (part.cureFrom) part.mat.color.copy(part.cureFrom).lerp(part.cureTo, smooth((t - st.end + 0.2) / 2.0));
+      // transparency handling
+      const animating = state === 1;
+      const lay = ghost < 1 ? ghost : 1;
+      part.U.uLayerAlpha.value = lay;
+      const wantT = part.baseOpacity < 1 || animating || lay < 1;
+      part.mat.transparent = wantT;
+      part.mat.depthWrite = part.baseOpacity >= 1 && lay >= 1;
+      part.mesh.castShadow = part.baseOpacity >= 1 && lay > 0.5;
+    }
+  }
+  // LED reveal
+  const RL = LAYERS.get(REVEAL.layer);
+  if (RL && RL.parts.length) {
+    if (!RL.revealSetup) {
+      RL.revealSetup = true;
+      // gradient parameter along the two widest axes of the module cloud
+      const bb = new THREE.Box3(); RL.pieces.forEach(p => bb.expandByPoint(new THREE.Vector3(...p.c)));
+      const s = bb.getSize(new THREE.Vector3()); const ax = [0, 1, 2].sort((a, b) => [s.x, s.y, s.z][b] - [s.x, s.y, s.z][a]);
+      const mn = [bb.min.x, bb.min.y, bb.min.z], sz = [s.x, s.y, s.z];
+      RL.pieces.forEach(p => { const u = (p.c[ax[0]] - mn[ax[0]]) / (sz[ax[0]] || 1), v = (p.c[ax[1]] - mn[ax[1]]) / (sz[ax[1]] || 1); p.g = clamp01(0.75 * u + 0.25 * v); });
+      RL.cols = REVEAL.colors.map(c => new THREE.Color(c));
+    }
+    const [r0, r1] = REVEAL.t, tmp = new THREE.Color(), off = new THREE.Color(0.02, 0.02, 0.02);
+    const key = Math.round(t * 1000);
+    if (RL.lastKey !== key) {
+      RL.lastKey = key;
+      for (const p of RL.pieces) {
+        const g = p.g, cs = RL.cols, seg = g * (cs.length - 1), i = Math.min(cs.length - 2, Math.floor(seg));
+        tmp.copy(cs[i]).lerp(cs[i + 1], seg - i);
+        const w = smooth((t - lerp(r0, r1 - (r1 - r0) * (1 - REVEAL.sweep), g)) / ((r1 - r0) * (1 - REVEAL.sweep)));
+        p.part.mesh.setColorAt(p.i, off.clone().lerp(tmp, w));
+      }
+      for (const part of RL.parts) { if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true; part.U.uGlow.value = REVEAL.glow; }
+    }
+  }
+  renderer.shadowMap.needsUpdate = true;
+}
+function layerGhost(name, t) {
+  let a = 1;
+  if (ghostLive && CUTAWAY_MATCH.test(name)) a = Math.min(a, 0.12);
+  for (const g of GHOST_WINDOWS) if (g.match.test(name)) {
+    const w = Math.min(smooth((t - g.t[0]) / 0.6), 1 - smooth((t - g.t[1]) / 0.6));
+    a = Math.min(a, lerp(1, g.alpha, w));
+  }
+  return a;
+}
+
+// ---------- camera from timeline ----------
+function camState(t) {
+  const keys = [...PHASES.map(p => p.cam), CAM_END];
+  let s = { target: keys[0].target.clone(), dist: keys[0].dist, el: keys[0].el };
+  for (let i = 1; i < keys.length; i++) {
+    const k = keys[i], w = smooth((t - (k.t - 1.2)) / 1.8);
+    if (w <= 0) break;
+    s.target.lerp(k.target, w); s.dist = lerp(s.dist, k.dist, w); s.el = lerp(s.el, k.el, w);
+  }
+  let az = ORBIT.az0 + (orbitOn ? ORBIT.degPerSec * t : 0);
+  for (const p of PUSH) {
+    if (p.off) continue;
+    const w = Math.min(smooth((t - (p.t0 - 0.2)) / 1.1), 1 - smooth((t - p.t1) / 1.1));
+    if (w <= 0) continue;
+    s.target.lerp(p.target, w); s.dist = lerp(s.dist, p.dist, w); s.el = lerp(s.el, p.el, w);
+    let da = ((p.az - az + 540) % 360) - 180; az += da * w;
+  }
+  s.az = az; return s;
+}
+function placeCamera(t) {
+  const s = camState(t);
+  const a = THREE.MathUtils.degToRad(s.az), e = THREE.MathUtils.degToRad(s.el);
+  const eye = [s.target.x + s.dist * Math.cos(e) * Math.cos(a), s.target.y + s.dist * Math.cos(e) * Math.sin(a), s.target.z + s.dist * Math.sin(e)];
+  camera.position.copy(toThree(eye));
+  controls.target.copy(toThree([s.target.x, s.target.y, s.target.z]));
+  camera.lookAt(controls.target);
+  camera.near = Math.max(0.5, s.dist * 0.02); camera.far = s.dist * 8 + 2000; camera.updateProjectionMatrix();
+}
+
+// ---------- HUD (drawn on screen and into the video) ----------
+let logoImg = null;
+const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+function activePhase(t) { let k = 0; PHASES.forEach((p, i) => { if (t >= p.t[0]) k = i; }); return k; }
+function activeLayer(t) {
+  let best = null; for (const st of STEPS) if (t >= st.start && t < st.end + 0.15 && (!best || st.start > best.start)) best = st;
+  return best;
+}
+function drawHUD(ctx, W, H, t) {
+  const s = H / 1080; ctx.clearRect(0, 0, W, H);
+  ctx.textBaseline = 'alphabetic';
+  const ph = PHASES[activePhase(t)], st = activeLayer(t);
+  ctx.fillStyle = '#5f5f60'; ctx.font = `${17 * s}px ${FONT}`;
+  ctx.fillText(`Chunk assembly · phase ${activePhase(t) + 1} of ${PHASES.length}`, 52 * s, 66 * s);
+  ctx.fillStyle = '#1c1c1d'; ctx.font = `300 ${44 * s}px ${FONT}`; ctx.fillText(ph.label, 50 * s, 116 * s);
+  if (st && t < END_T - 1.2) { ctx.fillStyle = '#7a4930'; ctx.font = `${19 * s}px ${FONT}`; ctx.fillText(comp(st.layer.name), 52 * s, 150 * s); }
+  if (logoImg) { const h = 72 * s, w = h * logoImg.width / logoImg.height; ctx.drawImage(logoImg, W - 52 * s - w, 44 * s, w, h); }
+  // phase bar
+  const x0 = 52 * s, x1 = W - 52 * s, y = H - 58 * s, tot = PHASES.reduce((a, p) => a + (p.t[1] - p.t[0]), 0);
+  let x = x0; const segs = [];
+  PHASES.forEach(p => { const w = (p.t[1] - p.t[0]) / tot * (x1 - x0); segs.push([x, x + w]); x += w; });
+  const cur = activePhase(t);
+  segs.forEach(([a, b], i) => {
+    ctx.fillStyle = i < cur ? 'rgba(0,0,0,.62)' : i === cur ? '#c2410c' : 'rgba(0,0,0,.14)';
+    ctx.fillRect(a + 2 * s, y, b - a - 4 * s, 5 * s);
+    ctx.fillStyle = i === cur ? '#1c1c1d' : '#5f5f60'; ctx.font = `${13 * s}px ${FONT}`;
+    const lab = PHASES[i].label; let L = lab; while (ctx.measureText(L).width > b - a - 8 * s && L.length > 3) L = L.slice(0, -2);
+    if (L !== lab) L = L.slice(0, -1) + '…';
+    ctx.fillText(L, a + 3 * s, y + 26 * s);
+  });
+  // playhead: linear inside a phase's own core time, parked on the boundary during overlaps
+  let px = x0;
+  for (let i = 0; i < PHASES.length; i++) {
+    const p = PHASES[i], prevEnd = i ? PHASES[i - 1].t[1] : -1e9, nextStart = i < PHASES.length - 1 ? PHASES[i + 1].t[0] : 1e9;
+    const cs = Math.max(p.t[0], prevEnd), ce = Math.min(p.t[1], nextStart);
+    if (t >= cs) px = lerp(segs[i][0], segs[i][1], ce > cs ? clamp01((t - cs) / (ce - cs)) : 1);
+  }
+  ctx.fillStyle = '#1c1c1d'; ctx.fillRect(px - 1.5 * s, y - 6 * s, 3 * s, 17 * s);
+  if (tagsOn) drawTags(ctx, W, H, t, s);
+}
+// on screen the caption and timeline are HTML; the canvas carries only the leader tags
+function drawScreenHUD(ctx, W, H, t) {
+  ctx.clearRect(0, 0, W, H);
+  if (tagsOn) drawTags(ctx, W, H, t, H / 1080);
+}
+function drawTags(ctx, W, H, t, s) {
+  for (const p of PUSH) {
+    if (p.off) continue;
+    const vis = Math.min(smooth((t - p.t0 - 0.6) / 0.3), 1 - smooth((t - p.t1 - 0.1) / 0.3));
+    if (vis <= 0) continue;
+    const items = [];
+    for (const tg of p.tags) {
+      if (t < tg.tOn) continue;
+      const v = toThree(tg.piece.c).project(camera);
+      if (v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) continue;
+      items.push({ tg, ax: (v.x + 1) / 2 * W, ay: (1 - v.y) / 2 * H, a: vis * smooth((t - tg.tOn) / 0.25) });
+    }
+    const cols = { L: items.filter(i => i.ax < W / 2), R: items.filter(i => i.ax >= W / 2) };
+    ctx.font = `${17 * s}px ${FONT}`;
+    for (const side of ['L', 'R']) {
+      const list = cols[side].sort((a, b) => a.ay - b.ay), gap = 34 * s, top = 200 * s, bot = H - 120 * s;
+      let yPrev = -1e9; list.forEach(i => { i.ly = Math.max(i.ay, yPrev + gap, top); yPrev = i.ly; });
+      const over = yPrev - bot; if (over > 0) list.forEach(i => i.ly -= over);
+      for (const i of list) {
+        const tw = ctx.measureText(i.tg.label).width, pad = 7 * s, bh = 26 * s;
+        const bx = side === 'L' ? 70 * s : W - 70 * s - tw - 2 * pad;
+        const ex = side === 'L' ? bx + tw + 2 * pad : bx;
+        ctx.globalAlpha = i.a;
+        ctx.strokeStyle = '#1c1c1d'; ctx.lineWidth = 1.2 * s;
+        ctx.beginPath(); ctx.moveTo(ex, i.ly); ctx.lineTo(ex + (side === 'L' ? 30 : -30) * s, i.ly); ctx.lineTo(i.ax, i.ay); ctx.stroke();
+        ctx.beginPath(); ctx.arc(i.ax, i.ay, 3.5 * s, 0, Math.PI * 2); ctx.fillStyle = '#1c1c1d'; ctx.fill();
+        ctx.beginPath(); ctx.roundRect(bx, i.ly - bh / 2, tw + 2 * pad, bh, 6 * s);
+        ctx.fillStyle = 'rgba(244,243,240,.9)'; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.stroke();
+        ctx.fillStyle = '#1c1c1d'; ctx.fillText(i.tg.label, bx + pad, i.ly + 6 * s);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+}
+
+// ---------- layout / render loop ----------
+let viewW = 0, viewH = 0;
+// The camera moves were composed for 16:9. Any window shape shows that whole frame: wider windows
+// keep the vertical field of view, taller ones widen it so the sides are never cropped.
+function fitCamera(aspect) {
+  camera.aspect = aspect;
+  camera.fov = aspect >= 16 / 9 ? FOV
+    : THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * (16 / 9) / aspect));
+  camera.updateProjectionMatrix();
+}
+function layout() {
+  viewW = innerWidth; viewH = innerHeight;
+  const pr = Math.min(window.devicePixelRatio || 1, 1.5);
+  renderer.setPixelRatio(pr); renderer.setSize(viewW, viewH, false);
+  hudCanvas.width = Math.round(viewW * pr); hudCanvas.height = Math.round(viewH * pr);
+  fitCamera(viewW / viewH);
+}
+window.addEventListener('resize', () => { if (!exporting) layout(); });
+
+function fitShadow() {
+  const sph = MODEL_BOX.getBoundingSphere(new THREE.Sphere()); const c = toThree([sph.center.x, sph.center.y, sph.center.z]);
+  sun.target.position.copy(c); sun.position.copy(c).add(new THREE.Vector3(0.55, 1.0, 0.45).normalize().multiplyScalar(sph.radius * 2.2));
+  const r = sph.radius * 1.05, sc = sun.shadow.camera; sc.left = -r; sc.right = r; sc.top = r; sc.bottom = -r; sc.near = 1; sc.far = sph.radius * 4.5; sc.updateProjectionMatrix();
+  if (SHADOW_GROUND > 0) {
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(sph.radius * 8, sph.radius * 8), new THREE.ShadowMaterial({ opacity: SHADOW_GROUND }));
+    g.position.set(sph.center.x, sph.center.y, MODEL_BOX.min.z - 0.3); g.receiveShadow = true; root.add(g);
+  }
+}
+
+let playing = false, speed = 1, lastNow = 0, exporting = false;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (exporting) return;
+  const dt = lastNow ? Math.min(0.1, (now - lastNow) / 1000) : 0; lastNow = now;
+  if (playing && !dragging) { T += dt * speed; if (T >= END_T) { T = END_T; setPlaying(false); } }
+  if (T !== lastAppliedT) { applyTime(T); lastAppliedT = T; }
+  updateUI();
+  if (autoCam) placeCamera(T); else controls.update();
+  renderer.render(scene, camera);
+  drawScreenHUD(hud, hudCanvas.width, hudCanvas.height, T);
+}
+
+// ---------- UI: caption, timeline, controls ----------
+const track = $('track'), tip = $('tip'), head = $('head');
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+// one segment per phase, from its start to the next phase's start
+const SEGS = PHASES.map((p, i) => [p.t[0], i < PHASES.length - 1 ? PHASES[i + 1].t[0] : END_T]);
+const segEls = SEGS.map(([a, b]) => {
+  const el = document.createElement('div'); el.className = 'seg';
+  el.style.left = `calc(${a / END_T * 100}% + 1px)`; el.style.width = `calc(${(b - a) / END_T * 100}% - 2px)`;
+  el.appendChild(document.createElement('i')); track.appendChild(el); return el;
+});
+const ICON = { play: '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>', pause: '<svg viewBox="0 0 12 12"><path d="M2 1h3v10H2zM7 1h3v10H7z"/></svg>' };
+function setPlaying(v) { playing = v; $('play').innerHTML = v ? ICON.pause : ICON.play; if (v && T >= END_T) T = 0; }
+setPlaying(false);
+let lastCap = '';
+function updateUI() {
+  const pi = activePhase(T), ph = PHASES[pi], st = activeLayer(T);
+  const cap = pi + '|' + (st && T < END_T - 1.2 ? comp(st.layer.name) : '');
+  if (cap !== lastCap) {
+    lastCap = cap;
+    $('num').textContent = `Chunk assembly · phase ${pi + 1} of ${PHASES.length}`;
+    $('title').textContent = ph.label;
+    $('layer').textContent = cap.split('|')[1];
+  }
+  segEls.forEach((el, i) => { const [a, b] = SEGS[i]; el.firstChild.style.width = `${clamp01((T - a) / (b - a)) * 100}%`; el.classList.toggle('on', i === pi); });
+  head.style.left = `calc(${T / END_T * 100}% - 1px)`;
+  $('time').textContent = `${fmt(T)} / ${fmt(END_T)}`;
+}
+const tAt = (e) => { const r = track.getBoundingClientRect(); return clamp01((e.clientX - r.left) / r.width) * END_T; };
+let dragging = false;
+track.addEventListener('pointerdown', (e) => { dragging = true; track.setPointerCapture(e.pointerId); T = tAt(e); });
+track.addEventListener('pointermove', (e) => {
+  const t = tAt(e), i = SEGS.findIndex(([a, b]) => t >= a && t < b);
+  tip.textContent = `${Math.max(0, i) + 1}. ${PHASES[Math.max(0, i)].label}`; tip.style.left = `${t / END_T * 100}%`; tip.style.opacity = 1;
+  if (dragging) T = t;
+});
+track.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
+track.addEventListener('pointerup', () => { dragging = false; });
+$('play').onclick = () => setPlaying(!playing);
+$('speed').onchange = e => speed = +e.target.value;
+const press = (el, v) => el.setAttribute('aria-pressed', v);
+$('orbit').onclick = e => { orbitOn = !orbitOn; press(e.currentTarget, orbitOn); };
+$('tags').onclick = e => { tagsOn = !tagsOn; press(e.currentTarget, tagsOn); };
+if (innerWidth <= 640) { tagsOn = false; press($('tags'), false); } // too many to read on a phone
+$('cut').onclick = e => { ghostLive = !ghostLive; press(e.currentTarget, ghostLive); applyTime(T, true); };
+$('reset').onclick = () => { autoCam = true; };
+controls.addEventListener('start', () => { autoCam = false; });
+$('logoBtn').onclick = () => $('logoFile').click();
+$('logoFile').onchange = e => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => logoImg = im; im.src = URL.createObjectURL(f); };
+window.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'SELECT') { e.preventDefault(); setPlaying(!playing); } });
+
+// ---------- MP4 export (WebCodecs + mp4-muxer) ----------
+$('export').onclick = async () => {
+  if (exporting) return;
+  if (!('VideoEncoder' in window)) { alert('This browser has no WebCodecs. Use Chrome or Edge.'); return; }
+  const msg = $('exportMsg'); msg.style.display = 'block'; msg.textContent = 'Preparing export…';
+  let Mp4;
+  try { Mp4 = await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/+esm'); }
+  catch (e) { msg.textContent = 'Could not load the MP4 muxer (needs internet).'; return; }
+  exporting = true; setPlaying(false);
+  const wasAuto = autoCam; autoCam = true;
+  const prevPR = renderer.getPixelRatio();
+  renderer.setPixelRatio(1); renderer.setSize(OUT_W, OUT_H, false); fitCamera(OUT_W / OUT_H);
+  const comp2 = document.createElement('canvas'); comp2.width = OUT_W; comp2.height = OUT_H; const cx = comp2.getContext('2d');
+  const hudOff = document.createElement('canvas'); hudOff.width = OUT_W; hudOff.height = OUT_H; const hx = hudOff.getContext('2d');
+  let codec = 'avc1.640033';
+  const cfg = c => ({ codec: c, width: OUT_W, height: OUT_H, bitrate: BITRATE, framerate: FPS, avc: { format: 'avc' } });
+  if (!(await VideoEncoder.isConfigSupported(cfg(codec))).supported) codec = 'avc1.4d0033';
+  const muxer = new Mp4.Muxer({ target: new Mp4.ArrayBufferTarget(), video: { codec: 'avc', width: OUT_W, height: OUT_H }, fastStart: 'in-memory' });
+  let encErr = null;
+  const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: e => encErr = e });
+  enc.configure(cfg(codec));
+  const N = Math.round(END_T * FPS);
+  try {
+    for (let f = 0; f <= N; f++) {
+      const t = Math.min(END_T, f / FPS);
+      applyTime(t); placeCamera(t);
+      renderer.render(scene, camera);
+      cx.drawImage(glCanvas, 0, 0, OUT_W, OUT_H);
+      drawHUD(hx, OUT_W, OUT_H, t); cx.drawImage(hudOff, 0, 0);
+      const vf = new VideoFrame(comp2, { timestamp: Math.round(f * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+      enc.encode(vf, { keyFrame: f % FPS === 0 }); vf.close();
+      while (enc.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 2));
+      if (encErr) throw encErr;
+      if (f % 5 === 0) { msg.textContent = `Exporting frame ${f} / ${N}`; await new Promise(r => setTimeout(r)); }
+    }
+    await enc.flush(); muxer.finalize();
+    const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Chunk_Assembly_Sequence.mp4'; a.click();
+    msg.textContent = 'Export done: Chunk_Assembly_Sequence.mp4 (' + (blob.size / 1e6).toFixed(1) + ' MB)';
+  } catch (e) { console.error(e); msg.textContent = 'Export failed: ' + e.message; }
+  finally {
+    exporting = false; autoCam = wasAuto; renderer.setPixelRatio(prevPR); layout(); lastAppliedT = -1;
+    setTimeout(() => msg.style.display = 'none', 6000);
+  }
+};
+
+// ---------- go ----------
+layout();
+try {
+  await loadAll();
+  buildTimeline();
+  fitShadow();
+  applyTime(0, true); lastAppliedT = 0;
+  $('load').style.opacity = 0; setTimeout(() => $('load').remove(), 700);
+  console.log('Layers:', LAYERS.size, 'Steps:', STEPS.length, 'Model box', MODEL_BOX);
+  setPlaying(true);
+  requestAnimationFrame(frame);
+} catch (e) { console.error(e); setProgress('Load failed: ' + e.message, 0); }
+window.__chunk = { get T() { return T; }, setT: (t) => { T = Math.min(END_T, Math.max(0, t)); }, setPlaying, END_T, ready: () => !!STEPS.length };
+</script>
+</body>
+</html>
