@@ -660,10 +660,15 @@ function drawHUD(ctx, W, H, t) {
   const s = H / 1080; ctx.clearRect(0, 0, W, H);
   ctx.textBaseline = 'alphabetic';
   const ph = PHASES[activePhase(t)], st = activeLayer(t);
-  ctx.fillStyle = '#5f5f60'; ctx.font = `${17 * s}px ${FONT}`;
-  ctx.fillText(`Chunk assembly · phase ${activePhase(t) + 1} of ${PHASES.length}`, 52 * s, 66 * s);
-  ctx.fillStyle = '#1c1c1d'; ctx.font = `300 ${44 * s}px ${FONT}`; ctx.fillText(ph.label, 50 * s, 116 * s);
-  if (st && t < END_T - 1.2) { ctx.fillStyle = '#7a4930'; ctx.font = `${19 * s}px ${FONT}`; ctx.fillText(comp(st.layer.name), 52 * s, 150 * s); }
+  // the same soft background glow the on-screen caption has, so it reads over the model
+  const glow = (fill, font, text, x, y) => {
+    ctx.font = font; ctx.shadowColor = '#cbcac7';
+    for (const b of [22, 12, 5]) { ctx.shadowBlur = b * s; ctx.fillStyle = '#cbcac7'; ctx.fillText(text, x, y); }
+    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.fillStyle = fill; ctx.fillText(text, x, y);
+  };
+  glow('#5f5f60', `${17 * s}px ${FONT}`, `Chunk assembly · phase ${activePhase(t) + 1} of ${PHASES.length}`, 52 * s, 66 * s);
+  glow('#1c1c1d', `300 ${44 * s}px ${FONT}`, ph.label, 50 * s, 116 * s);
+  if (st && t < END_T - 1.2) glow('#7a4930', `${19 * s}px ${FONT}`, comp(st.layer.name), 52 * s, 150 * s);
   if (logoImg) { const h = 72 * s, w = h * logoImg.width / logoImg.height; ctx.drawImage(logoImg, W - 52 * s - w, 44 * s, w, h); }
   // phase bar
   const x0 = 52 * s, x1 = W - 52 * s, y = H - 58 * s, tot = PHASES.reduce((a, p) => a + (p.t[1] - p.t[0]), 0);
@@ -673,10 +678,10 @@ function drawHUD(ctx, W, H, t) {
   segs.forEach(([a, b], i) => {
     ctx.fillStyle = i < cur ? 'rgba(0,0,0,.62)' : i === cur ? '#c2410c' : 'rgba(0,0,0,.14)';
     ctx.fillRect(a + 2 * s, y, b - a - 4 * s, 5 * s);
-    ctx.fillStyle = i === cur ? '#1c1c1d' : '#5f5f60'; ctx.font = `${13 * s}px ${FONT}`;
+    ctx.font = `${13 * s}px ${FONT}`;
     const lab = PHASES[i].label; let L = lab; while (ctx.measureText(L).width > b - a - 8 * s && L.length > 3) L = L.slice(0, -2);
     if (L !== lab) L = L.slice(0, -1) + '…';
-    ctx.fillText(L, a + 3 * s, y + 26 * s);
+    glow(i === cur ? '#1c1c1d' : '#5f5f60', ctx.font, L, a + 3 * s, y + 26 * s);
   });
   // playhead: linear inside a phase's own core time, parked on the boundary during overlaps
   let px = x0;
