@@ -117,13 +117,17 @@ const ease = (x) => { x = clamp01(x); return x * x * (3 - 2 * x); };
 const easeOut = (x) => 1 - Math.pow(1 - clamp01(x), 3);
 
 // ---------------------------------------------------------------------------------------------
-// Construction programme: the owner's fourteen steps, plus site completion. A step can hold several
-// phases (step 2 is piling, pile caps and columns); the caption and timeline show steps, and each
+// Construction programme: fourteen steps, plus site completion. A step can hold several phases (step
+// 2 is piling, pile caps and the core); the caption and timeline show steps, and each
 // phase supplies the line describing what is happening at that moment. Durations are seconds at 1×.
 // ---------------------------------------------------------------------------------------------
-const STEP_NAMES = [, 'Excavation & Site Boundary', 'Foundations & Columns', 'Shear Walls & Slabs', 'Big Columns & Core',
+// The core leads: it is slip-formed straight off its mat, ahead of the garage, so the garage floors
+// are built around a finished core. Floor slabs are not left to the end: each is decked and poured as
+// soon as the framing under it is in place, so the crews have a floor to work from before the steel
+// above it goes in (see the slab scheduling after the erection planner).
+const STEP_NAMES = [, 'Excavation & Site Boundary', 'Foundations & Core', 'Columns, Shear Walls & Slabs', 'Big Columns',
   'Primary Truss', 'First Shell', 'Second Shell', 'Glulam Dome', 'Third Shell', 'Floor Beams & Secondary Truss',
-  'Extra Trusses', 'Last Shell & Leg', 'Extra Sides & Buttresses', 'Floor Decking & Concrete Slabs',
+  'Extra Trusses', 'Last Shell & Leg', 'Extra Sides & Buttresses',
   'Skylight & ETFE Structure', 'Site Completion'];
 const NSTEPS = STEP_NAMES.length - 2; // the owner's numbered steps; site completion follows them
 const PHASES = [
@@ -133,14 +137,16 @@ const PHASES = [
     desc: 'Bearing piles are driven at every column position and in groups under the core and the two strut foundations.' },
   { k: 'caps', step: 2, d: 5, view: [300, -180, 50, 560, 0.7],
     desc: 'Pile caps are poured column line by column line, with thick mat foundations for the core and both struts.' },
-  { k: 'cols', step: 2, d: 4, view: [300, -180, 70, 600, 0.62],
+  { k: 'core', step: 2, d: 10, view: [290, -175, 150, 900, 0.45],
+    desc: 'The core is slip-formed straight off its mat in one continuous climb, ahead of the garage, so the floors below can be built around it. The north tower crane goes up first and feeds it rebar cages as the form rises.' },
+  { k: 'cols', step: 3, d: 4, view: [300, -180, 70, 600, 0.62],
     desc: 'The first lift of the parking columns is cast on the caps, up to the first parking level, column line by column line from west to east.' },
   { k: 'parking', step: 3, d: 15, view: [300, -180, 70, 620, 0.6],
-    desc: 'The garage goes up a floor at a time: the shear walls rise to each level and its slab is poured, then the columns are cast up to the next level, until they reach the podium.' },
+    desc: 'The garage goes up a floor at a time around the finished core: the shear walls rise to each level and its slab is poured, then the columns are cast up to the next level, until they reach the podium.' },
   { k: 'podium', step: 3, d: 6, view: [290, -175, 90, 680, 0.58],
-    desc: 'The podium slab is poured across the garage and the vehicle entrance is formed. Two tower cranes go up, on the north and east sides.' },
-  { k: 'cores', step: 4, d: 18, view: [280, -170, 180, 1000, 0.4],
-    desc: 'The H-beam steel for both raking columns goes up first in spliced lifts, propped on shoring towers and raking braces, with the heads set last. Then the core and both big columns are poured together around the completed steel.' },
+    desc: 'The podium slab is poured across the garage and the vehicle entrance is formed. The second tower crane goes up on the east side.' },
+  { k: 'cores', step: 4, d: 14, view: [280, -170, 180, 1000, 0.4],
+    desc: 'The H-beam steel for both raking columns goes up in spliced lifts, propped on shoring towers and twin raking props from the podium, with the heads set last. Then both big columns are poured around the completed steel.' },
   { k: 'truss', step: 5, d: 8, view: [300, -165, 250, 1050, 0.5],
     desc: 'The primary deck truss goes up between the core and the column heads: chords first, then verticals, then obliques. With it in, the column shoring is struck.' },
   { k: 'shell1', step: 6, d: 11, view: [280, -165, 240, 1150, 0.38],
@@ -148,24 +154,22 @@ const PHASES = [
   { k: 'shell2', step: 7, d: 8, view: [270, -165, 250, 1200, 0.38],
     desc: 'The second shell wraps the first: primary group, then secondary group.' },
   { k: 'pavilion', step: 8, d: 5, view: [300, -170, 220, 900, 0.46],
-    desc: 'The glulam dome goes up inside the shells: the main-beam group first, then the hoops.' },
+    desc: 'The glulam dome goes up inside the shells: the main-beam group first, then the hoops. As soon as it stands, the timber floor on its crown and the deck over it are laid.' },
   { k: 'shell3', step: 9, d: 9, view: [270, -165, 260, 1200, 0.38],
     desc: 'The third shell goes on outside the second: primary group, then secondary group.' },
   { k: 'floors', step: 10, d: 8, view: [290, -165, 240, 1050, 0.5],
-    desc: 'The secondary truss members complete the deck truss, then the floor beam groups go in at 205, 235 and 277 ft.' },
+    desc: 'The secondary truss members complete the deck truss, then the floor beam groups go in at 205, 235 and 277 ft. Each floor is decked and its slab poured as soon as the framing under it is in, starting with the main deck, so the crews have a floor to work from before the next steel goes up.' },
   { k: 'extras', step: 11, d: 8, view: [250, -170, 220, 1250, 0.42],
-    desc: 'The extra trusses go in on shoring towers, with their sub-framing, then the vent trusses.' },
+    desc: 'The extra trusses go in on shoring towers, with their sub-framing, then the vent trusses. The slabs on the extra trusses are decked and poured as soon as they are framed.' },
   { k: 'shell4', step: 12, d: 10, view: [260, -165, 260, 1300, 0.36],
     desc: 'The leg goes in, standing on the podium and tied into the extra trusses, then the last shell: its west lobe and the main outer grid.' },
   { k: 'sides', step: 13, d: 4, view: [250, -170, 240, 1250, 0.42],
     desc: 'The extra sides and their buttresses go on against the finished last shell.' },
-  { k: 'decks', step: 14, d: 13, view: [290, -165, 250, 1100, 0.55],
-    desc: 'Metal decking is laid on the floor beams, the deck truss and the extra trusses, and the concrete slabs are poured level by level, from the slab on the low outer extra truss at 178 ft up to the deck and side slabs at 278 ft. The glulam dome is decked over in timber, with the timber floor at 248 ft on its crown.' },
-  { k: 'skylight', step: 15, d: 6, view: [270, -165, 290, 1150, 0.6],
+  { k: 'skylight', step: 14, d: 6, view: [270, -165, 290, 1150, 0.6],
     desc: 'The skylight framing and the ETFE frame go in.' },
-  { k: 'landscape', step: 16, d: 7, view: [260, -165, 220, 1300, 0.38],
+  { k: 'landscape', step: 15, d: 7, view: [260, -165, 220, 1300, 0.38],
     desc: 'Shoring is struck, the cranes are dismantled, and the basement is backfilled under a landscaped plaza.' },
-  { k: 'done', step: 16, d: 5, view: [260, -165, 220, 1300, 0.38],
+  { k: 'done', step: 15, d: 5, view: [260, -165, 220, 1300, 0.38],
     desc: 'Assembly complete.' },
 ];
 for (const p of PHASES) p.name = STEP_NAMES[p.step];
@@ -306,7 +310,7 @@ function classify(o) {
   const dxy = Math.max(o.max[0] - o.min[0], o.max[1] - o.min[1]);
   if (id === 834 || rhinoLayer(o) === 'earth') return ['landscape', 'plaza'];
   if (m === 'concrete') {
-    if (id === 1) return ['cores', 'core'];
+    if (id === 1) return ['core', 'core'];
     if (id === 894 || id === 895) return ['cores', 'strut'];
     return ['cores', 'headc'];
   }
@@ -492,9 +496,14 @@ const colLines = (() => {
   rest.forEach((it, i) => { const s = ph.t0 + ph.d * 0.15 + (ph.d * 0.6) * i / Math.max(1, rest.length - 1); setGrow(it, [[s, it.o.min[2]], [s + 0.8, it.o.max[2] + 0.05]]); });
   byPhase.podium.filter(i => i.sub === 'roof').forEach(it => setSweep(it, ph.t0, ph.t0 + ph.d * 0.7));
 }
+// The core is slip-formed off its mat in one continuous climb, before the garage goes up around it.
+for (const it of byPhase.core) {
+  const pc = P.core;
+  setGrow(it, [[pc.t0 + 0.4, it.o.min[2]], [pc.t0 + pc.d * 0.25, it.o.min[2] + (it.o.max[2] - it.o.min[2]) * 0.22], [pc.t1 - 0.4, it.o.max[2] + 0.05]], false);
+}
 // FECC columns (fully encased composite). The H-beam steel inside both struts goes up first, in
-// three spliced lifts, with the H-beam heads set last. Only then are all three columns, the core and
-// both struts, poured together around the completed steel, with the concrete heads cast last.
+// three spliced lifts, with the H-beam heads set last. Only then are both struts poured around the
+// completed steel, with the concrete heads cast last.
 const SPLICES = 3;
 {
   const pc = P.cores, A = pc.t0, D = pc.d;
@@ -512,7 +521,7 @@ const SPLICES = 3;
   const p0 = A + D * 0.44, p1 = A + D * 0.92;
   for (const it of byPhase.cores) {
     const top = it.o.max[2] + 0.05;
-    if (it.sub === 'core' || it.sub === 'strut') setGrow(it, [[p0, it.o.min[2]], [p1, top]], false);
+    if (it.sub === 'strut') setGrow(it, [[p0, it.o.min[2]], [p1, top]], false);
     if (it.sub === 'strut') it.steel = steel.slice().sort((a, b) => Math.abs(a.c.y - it.c.y) - Math.abs(b.c.y - it.c.y))[0];
     if (it.sub === 'headc') setGrow(it, [[p1 - D * 0.02, it.o.min[2]], [A + D * 0.98, top]]);
   }
@@ -561,7 +570,7 @@ const podiumTop = (x, y) => (x > 96 && x < 484 && y > -280 && y < -72) ? 99.2 : 
 // Planned shoring: one tower per 36 ft square under the lowest point of the lower decks and inner bowl
 const shoreReqs = [];
 {
-  const coreC = byPhase.cores.find(i => i.sub === 'core').c, grid = new Map();
+  const coreC = byPhase.core.find(i => i.sub === 'core').c, grid = new Map();
   for (const it of [...byPhase.extras.filter(i => i.o.max[2] < 192), ...[...byPhase.shell1, ...byPhase.shell2, ...byPhase.shell3, ...byPhase.shell4].filter(i => i.o.min[2] < 230)]) for (const k of it.cells) {
     const [x, y, z] = cellAt(k), g = Math.floor(x / 36) + ',' + Math.floor(y / 36), cur = grid.get(g);
     if (!cur || z < cur.z) grid.set(g, { x, y, z, it, k });
@@ -676,12 +685,271 @@ for (const ph of PHASES) {
 }
 for (const it of byPhase.landscape) setFade(it, P.landscape.t0 + P.landscape.d * 0.35, P.landscape.t1 - 0.5);
 
+// The modelled floor slabs (FLOOR SLAB.obj, packed into MODEL.slabs by build/slabs.mjs)
+const SLABS = await (async () => {
+  const S = window.MODEL.slabs; if (!S) return [];
+  const bytes = Uint8Array.from(atob(S.gz), c => c.charCodeAt(0));
+  const b = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  const pos = new Float32Array(b, 0, S.nv * 3), idx = new Uint32Array(b, S.nv * 12);
+  return S.objects.map(o => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos.slice(o.v0 * 3, (o.v0 + o.v) * 3), 3));
+    g.setIndex(new THREE.BufferAttribute(idx.slice(o.i0, o.i0 + o.t * 3), 1));
+    return { ...o, geo: toCreasedNormals(g, Math.PI / 5) };
+  });
+})();
+// Slabs the slab model does not include, laid on the framing that carries them: the side slab on
+// the 277 ft floor beams, a slab along the top of the low outer extra truss, and a timber deck over
+// the glulam dome. Each is worked out on a 1.5 ft grid. The framing is drawn in plan with the height
+// of its top, small gaps are closed and enclosed areas filled, and the plan of any modelled slab
+// already at that level is cut out. Between members the surface is relaxed smooth from the member
+// tops (so the dome deck follows its ribs), and the stepped outline is smoothed into a curve.
+const DERIVED = (() => {
+  const G = 1.5;
+  const eachTri = (geo, fn) => {
+    const p = geo.attributes.position, ix = geo.index, n = ix ? ix.count : p.count;
+    for (let t = 0; t < n; t += 3) {
+      const v = [0, 1, 2].map(k => { const i = ix ? ix.getX(t + k) : t + k; return [p.getX(i), p.getY(i), p.getZ(i)]; });
+      fn(v[0], v[1], v[2]);
+    }
+  };
+  function make({ name, mat, groups, zr, slabZr, close, open = 0, ride = 0, radial = 0, maxSlope = 0, thick, minCells }) {
+    const its = items.filter(it => (it.o.groups || []).some(g => groups.includes(g)));
+    if (!its.length) return null;
+    const pad = close + 4;
+    let X0 = Infinity, Y0 = Infinity, X1 = -Infinity, Y1 = -Infinity;
+    for (const it of its) { X0 = Math.min(X0, it.o.min[0]); Y0 = Math.min(Y0, it.o.min[1]); X1 = Math.max(X1, it.o.max[0]); Y1 = Math.max(Y1, it.o.max[1]); }
+    X0 -= pad; Y0 -= pad;
+    const nx = Math.ceil((X1 + pad - X0) / G), ny = Math.ceil((Y1 + pad - Y0) / G), N = nx * ny;
+    const cell = (x, y) => { const i = Math.floor((x - X0) / G), j = Math.floor((y - Y0) / G); return i < 0 || j < 0 || i >= nx || j >= ny ? -1 : j * nx + i; };
+    // framing in plan, keeping the highest point in each cell
+    const top = new Float32Array(N).fill(-Infinity);
+    for (const it of its) eachTri(it.mesh.geometry, (a, b, c) => {
+      for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+        const m = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) / 0.5));
+        for (let s = 0; s <= m; s++) {
+          const f = s / m, z = p[2] + (q[2] - p[2]) * f; if (z < zr[0] || z > zr[1]) continue;
+          const k = cell(p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f); if (k >= 0 && z > top[k]) top[k] = z;
+        }
+      }
+    });
+    // modelled slabs at this level, filled in plan
+    const taken = new Uint8Array(N);
+    for (const s of SLABS) {
+      if (s.max[2] < slabZr[0] || s.min[2] > slabZr[1]) continue;
+      eachTri(s.geo, (a, b, c) => {
+        const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]); if (Math.abs(d) < 1e-9) return;
+        const i0 = Math.floor((Math.min(a[0], b[0], c[0]) - X0) / G), i1 = Math.floor((Math.max(a[0], b[0], c[0]) - X0) / G);
+        const j0 = Math.floor((Math.min(a[1], b[1], c[1]) - Y0) / G), j1 = Math.floor((Math.max(a[1], b[1], c[1]) - Y0) / G);
+        for (let j = Math.max(0, j0); j <= Math.min(ny - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(nx - 1, i1); i++) {
+          const px = X0 + (i + 0.5) * G, py = Y0 + (j + 0.5) * G;
+          const l1 = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / d, l2 = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / d;
+          if (l1 >= -0.02 && l2 >= -0.02 && 1 - l1 - l2 >= -0.02) taken[j * nx + i] = 1;
+        }
+      });
+    }
+    // close gaps (square dilate then erode), then fill everything the outside cannot reach
+    const box = (src, r, isMax) => {
+      const a = new Uint8Array(N), out = new Uint8Array(N);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        let v = isMax ? 0 : 1;
+        for (let d = -r; d <= r && v === (isMax ? 0 : 1); d++) { const ii = i + d; const s = ii < 0 || ii >= nx ? (isMax ? 0 : 1) : src[j * nx + ii]; if (isMax ? s : !s) v = isMax ? 1 : 0; }
+        a[j * nx + i] = v;
+      }
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        let v = isMax ? 0 : 1;
+        for (let d = -r; d <= r && v === (isMax ? 0 : 1); d++) { const jj = j + d; const s = jj < 0 || jj >= ny ? (isMax ? 0 : 1) : a[jj * nx + i]; if (isMax ? s : !s) v = isMax ? 1 : 0; }
+        out[j * nx + i] = v;
+      }
+      return out;
+    };
+    const F = new Uint8Array(N); for (let k = 0; k < N; k++) F[k] = top[k] > -Infinity || taken[k] ? 1 : 0;
+    const r = Math.max(1, Math.round(close / G));
+    const M = box(box(F, r, true), r, false);
+    const outside = new Uint8Array(N), stack = [];
+    for (let i = 0; i < nx; i++) stack.push(i, (ny - 1) * nx + i);
+    for (let j = 0; j < ny; j++) stack.push(j * nx, j * nx + nx - 1);
+    while (stack.length) {
+      const k = stack.pop(); if (outside[k] || M[k]) continue; outside[k] = 1;
+      const i = k % nx, j = (k - i) / nx;
+      if (i > 0) stack.push(k - 1); if (i < nx - 1) stack.push(k + 1); if (j > 0) stack.push(k - nx); if (j < ny - 1) stack.push(k + nx);
+    }
+    let filled = new Uint8Array(N); for (let k = 0; k < N; k++) filled[k] = outside[k] ? 0 : 1;
+    if (open) { const ro = Math.max(1, Math.round(open / G)); filled = box(box(filled, ro, false), ro, true); } // trims rib feet and spurs
+    const R = new Uint8Array(N); for (let k = 0; k < N; k++) R[k] = filled[k] && !taken[k] ? 1 : 0;
+    // keep pieces of a real size that the framing actually carries
+    const framedAt = new Uint8Array(N); for (let k = 0; k < N; k++) framedAt[k] = top[k] > -Infinity ? 1 : 0;
+    const prune = () => {
+      const comp = new Int32Array(N).fill(-1);
+      for (let k0 = 0; k0 < N; k0++) {
+        if (!R[k0] || comp[k0] >= 0) continue;
+        const cells = [], st = [k0]; comp[k0] = k0; let framed = 0;
+        while (st.length) {
+          const k = st.pop(); cells.push(k); framed += framedAt[k];
+          const i = k % nx, j = (k - i) / nx;
+          for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && R[n] && comp[n] < 0) { comp[n] = k0; st.push(n); }
+        }
+        if (cells.length < minCells || framed < cells.length * 0.08) for (const k of cells) R[k] = 0;
+      }
+    };
+    prune();
+    // A dome is decked as one smooth elliptical cap: its plan from the upper framing (the rib feet
+    // left out), its height from the dome's own profile, the highest member at each distance out.
+    let profileH = null;
+    if (radial) {
+      let zt = -Infinity, zb = Infinity; for (let k = 0; k < N; k++) if (top[k] > -Infinity) { zt = Math.max(zt, top[k]); zb = Math.min(zb, top[k]); }
+      const zc = zb + (zt - zb) * radial;
+      let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
+      for (let k = 0; k < N; k++) if (top[k] >= zc) { const i = k % nx, j = (k - i) / nx; ax0 = Math.min(ax0, i); ax1 = Math.max(ax1, i + 1); ay0 = Math.min(ay0, j); ay1 = Math.max(ay1, j + 1); }
+      const cx = (ax0 + ax1) / 2, cy = (ay0 + ay1) / 2, rx = (ax1 - ax0) / 2, ry = (ay1 - ay0) / 2;
+      const rho = (k) => { const i = k % nx, j = (k - i) / nx; return Math.hypot((i + 0.5 - cx) / rx, (j + 0.5 - cy) / ry); };
+      const B = 48, prof = new Array(B + 1).fill(-Infinity);
+      for (let k = 0; k < N; k++) if (top[k] >= zc) { const b = Math.min(B, Math.round(rho(k) * B)); prof[b] = Math.max(prof[b], top[k]); }
+      for (let b = 0; b <= B; b++) if (prof[b] === -Infinity) prof[b] = b ? prof[b - 1] : zt;
+      for (let b = 1; b <= B; b++) prof[b] = Math.min(prof[b], prof[b - 1]); // falls away from the crown
+      for (let pass = 0; pass < 3; pass++) for (let b = 1; b < B; b++) prof[b] = (prof[b - 1] + 2 * prof[b] + prof[b + 1]) / 4;
+      profileH = (k) => { const x = Math.min(B, rho(k) * B), b = Math.floor(x), f = x - b; return b >= B ? prof[B] : prof[b] * (1 - f) + prof[b + 1] * f; };
+      for (let k = 0; k < N; k++) R[k] = rho(k) <= 1 && !taken[k] ? 1 : 0;
+    }
+    // surface height: member tops where there are members, relaxed smooth in between. On a truss the
+    // slab rides the upper envelope (the highest top within `ride` feet), not the bottom chord.
+    if (ride) {
+      const rr = Math.max(1, Math.round(ride / G)), a = new Float32Array(N).fill(-Infinity), b = new Float32Array(N).fill(-Infinity);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let m = -Infinity; for (let d = -rr; d <= rr; d++) { const ii = i + d; if (ii >= 0 && ii < nx) m = Math.max(m, top[j * nx + ii]); } a[j * nx + i] = m; }
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let m = -Infinity; for (let d = -rr; d <= rr; d++) { const jj = j + d; if (jj >= 0 && jj < ny) m = Math.max(m, a[jj * nx + i]); } b[j * nx + i] = m; }
+      top.set(b);
+    }
+    const H = new Float32Array(N); let sum = 0, cnt = 0;
+    for (let k = 0; k < N; k++) if (top[k] > -Infinity) { sum += top[k]; cnt++; }
+    if (!cnt) return null;
+    const fixed = new Uint8Array(N);
+    for (let k = 0; k < N; k++) { H[k] = top[k] > -Infinity ? top[k] : sum / cnt; fixed[k] = top[k] > -Infinity ? 1 : 0; }
+    if (profileH) for (let k = 0; k < N; k++) { if (R[k]) H[k] = profileH(k); fixed[k] = 0; }
+    const live = []; if (!profileH) for (let k = 0; k < N; k++) if (R[k] && !fixed[k]) live.push(k);
+    for (let it = 0; it < 400; it++) for (const k of live) {
+      const i = k % nx, j = (k - i) / nx; let s = 0, c = 0;
+      for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && (R[n] || fixed[n])) { s += H[n]; c++; }
+      if (c) H[k] = s / c;
+    }
+    // a light overall smoothing so the surface rides over the members instead of following every chord
+    const inR = []; for (let k = 0; k < N; k++) if (R[k]) inR.push(k);
+    for (let it = 0; it < 4; it++) {
+      const nh = new Float32Array(H);
+      for (const k of inR) {
+        const i = k % nx, j = (k - i) / nx; let s = H[k] * 2, c = 2;
+        for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && (R[n] || fixed[n])) { s += H[n]; c++; }
+        nh[k] = Math.max(H[k], s / c); // never sink below a member top
+      }
+      H.set(nh);
+    }
+    // a floor is near level: anything steeper than `maxSlope` is a fill draped down a gap, not a slab
+    if (maxSlope) {
+      const cut = [];
+      for (const k of inR) {
+        const i = k % nx, j = (k - i) / nx;
+        for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && R[n] && Math.abs(H[n] - H[k]) / G > maxSlope) { cut.push(k); break; }
+      }
+      for (const k of cut) R[k] = 0;
+      prune();
+    }
+    // plate mesh on the grid nodes, with the outline smoothed
+    const NX = nx + 1, nodeOf = new Int32Array(NX * (ny + 1)).fill(-1), P = [];
+    const node = (i, j) => { const n = j * NX + i; if (nodeOf[n] < 0) { nodeOf[n] = P.length; P.push([X0 + i * G, Y0 + j * G, 0, 0]); } return nodeOf[n]; };
+    const quads = [], edges = [];
+    let any = false;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i; if (!R[k]) continue; any = true;
+      const q = [node(i, j), node(i + 1, j), node(i + 1, j + 1), node(i, j + 1)];
+      for (const v of q) { P[v][2] += H[k]; P[v][3]++; }
+      quads.push(q);
+      const inR = (ii, jj) => ii >= 0 && jj >= 0 && ii < nx && jj < ny && R[jj * nx + ii];
+      if (!inR(i, j - 1)) edges.push([q[0], q[1]]);
+      if (!inR(i + 1, j)) edges.push([q[1], q[2]]);
+      if (!inR(i, j + 1)) edges.push([q[2], q[3]]);
+      if (!inR(i - 1, j)) edges.push([q[3], q[0]]);
+    }
+    if (!any) return null;
+    for (const v of P) v[2] /= v[3];
+    const nb = new Map();
+    for (const [a, b] of edges) { (nb.get(a) || nb.set(a, []).get(a)).push(b); (nb.get(b) || nb.set(b, []).get(b)).push(a); }
+    for (let it = 0; it < 8; it++) {
+      const nxt = new Map();
+      for (const [v, ns] of nb) if (ns.length === 2) nxt.set(v, [(2 * P[v][0] + P[ns[0]][0] + P[ns[1]][0]) / 4, (2 * P[v][1] + P[ns[0]][1] + P[ns[1]][1]) / 4]);
+      for (const [v, [x, y]] of nxt) { P[v][0] = x; P[v][1] = y; }
+    }
+    const plate = (z0, t) => { // bottom at surface + z0, top at surface + z0 + t
+      const pos = [];
+      const vt = (v, up) => [P[v][0], P[v][1], P[v][2] + z0 + (up ? t : 0)];
+      for (const [a, b, c, d] of quads) {
+        pos.push(...vt(a, 1), ...vt(b, 1), ...vt(c, 1), ...vt(a, 1), ...vt(c, 1), ...vt(d, 1));
+        pos.push(...vt(a, 0), ...vt(c, 0), ...vt(b, 0), ...vt(a, 0), ...vt(d, 0), ...vt(c, 0));
+      }
+      for (const [a, b] of edges) pos.push(...vt(a, 0), ...vt(b, 0), ...vt(b, 1), ...vt(a, 0), ...vt(b, 1), ...vt(a, 1));
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      return toCreasedNormals(g, Math.PI / 4);
+    };
+    const geo = plate(0.05, thick); geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    return { name, mat, derived: true, geo, deckGeo: mat === 'wood' ? null : plate(-0.06, 0.1), min: bb.min.toArray(), max: bb.max.toArray() };
+  }
+  return [
+    make({ name: 'Side slab at 277 ft', mat: 'Default', groups: ['Group185', 'Group181'], zr: [272, 283], slabZr: [272, 283], close: 4.5, thick: 0.7, minCells: 60 }),
+    make({ name: 'Slab on the outer extra truss', mat: 'Default', groups: ['Group20'], zr: [170, 190], slabZr: [183, 194], close: 4.5, ride: 5, maxSlope: 0.3, thick: 0.7, minCells: 60 }),
+    make({ name: 'Timber deck over the glulam dome', mat: 'wood', groups: ['Group167'], zr: [200, 252], slabZr: [244, 252], close: 4.5, radial: 0.3, thick: 0.6, minCells: 60 }),
+  ].filter(Boolean);
+})();
+// Slab timing. Each slab is decked and poured as soon as the framing it rests on is complete, so the
+// crews have a floor to work from before the steel above it goes in. The framing it rests on is the
+// floor framing (trusses, floor beams, the under-deck members, the dome, the core) in the six feet
+// under it: shell ribs that pass its edge do not carry it. The slab waits for the members carrying all
+// but the last 7% of it, so a member that only grazes an edge does not hold up the pour. Pours are
+// spaced at least a second apart, as one concrete crew works them in turn.
+const CARRIES = (it) => ['truss', 'floors', 'extras', 'pavilion', 'core', 'cores'].includes(it.phase) || /Under-deck/.test(it.layer?.name || '');
+const ALL_SLABS = [...SLABS, ...DERIVED];
+const surfCells = (geo) => {
+  const pos = geo.attributes.position, ix = geo.index, n = ix ? ix.count : pos.count, set = new Set();
+  const v = (i) => { const j = ix ? ix.getX(i) : i; return [pos.getX(j), pos.getY(j), pos.getZ(j)]; };
+  for (let t = 0; t < n; t += 3) {
+    const [a, b, c] = [v(t), v(t + 1), v(t + 2)];
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const m = Math.max(1, Math.ceil(Math.max(Math.hypot(...u), Math.hypot(...w), Math.hypot(u[0] - w[0], u[1] - w[1], u[2] - w[2])) / CS));
+    for (let i = 0; i <= m; i++) for (let j = 0; i + j <= m; j++) set.add(cellKey(a[0] + (u[0] * i + w[0] * j) / m, a[1] + (u[1] * i + w[1] * j) / m, a[2] + (u[2] * i + w[2] * j) / m));
+  }
+  return [...set];
+};
+const slabTime = new Map(); // voxel → when its slab's metal deck goes down
+{
+  for (const s of ALL_SLABS) {
+    s.cells = surfCells(s.geo);
+    const carry = new Map(); // member → slab voxels it is under
+    for (const k of s.cells) {
+      const [x, y, z] = cellAt(k), seen = new Set();
+      for (let j = 0; j <= 3; j++) {
+        const o = owners.get(cellKey(x, y, z - j * CS)); if (!o) continue;
+        for (const n of o) { const it = items[n]; if (seen.has(it) || it.t1 === undefined || !CARRIES(it)) continue; seen.add(it); carry.set(it, (carry.get(it) || 0) + 1); }
+      }
+    }
+    const list = [...carry.entries()].sort((a, b) => a[0].t1 - b[0].t1), tot = list.reduce((a, [, c]) => a + c, 0);
+    let acc = 0; s.tReady = 0;
+    for (const [it, c] of list) { s.tReady = it.t1; acc += c; if (acc >= tot * 0.93) break; }
+    if (!tot) s.tReady = P.floors.t1; // nothing under it at all: after the floor framing
+    const ph = {}; for (const [it, c] of list) ph[it.phase] = (ph[it.phase] || 0) + c;
+    s.carriedBy = ph;
+  }
+  let last = -Infinity;
+  for (const s of ALL_SLABS.slice().sort((a, b) => a.tReady - b.tReady || a.min[2] - b.min[2])) {
+    s.tDeck = Math.max(s.tReady + 0.3, last + 1.0); last = s.tDeck;
+    for (const k of s.cells) { const t = slabTime.get(k); if (t === undefined || s.tDeck < t) slabTime.set(k, s.tDeck); }
+  }
+}
 // When each voxel is first occupied
 const cellTime = new Map();
 for (const it of items) {
   if (it.t1 === undefined || it.phase === 'landscape') continue;
   for (const k of it.cells) { const t = cellTime.get(k); if (t === undefined || it.t1 < t) cellTime.set(k, it.t1); }
 }
+// occupied by a member or a slab: the earlier of the two
+const occT = (k) => { const a = cellTime.get(k), b = slabTime.get(k); return a === undefined ? b : b === undefined ? a : Math.min(a, b); };
 const dilate = (it) => { if (!it.own) { it.own = new Set(); for (const k of it.cells) for (const d of NB) it.own.add(k + d); } return it.own; };
 // how many sample points hit work in place (before time t) when moved `dist` along `dir`
 function pathHits(it, dir, dist, step, t) {
@@ -690,10 +958,11 @@ function pathHits(it, dir, dist, step, t) {
   for (const p of it.samples) for (let s = step; s <= dist; s += step) {
     const k = cellKey(p.x + dir.x * s, p.y + dir.y * s, p.z + dir.z * s);
     if (own.has(k)) continue;
-    const ct = cellTime.get(k);
+    const ct = occT(k);
     if (ct === undefined || ct >= t) continue;
     // the last few feet into a joint brush the members it connects to; that is the connection
-    if (s <= 4 && owners.get(k).every(j => it.nbrSet.has(j))) continue;
+    const ow = owners.get(k);
+    if (s <= 4 && ow && cellTime.get(k) === ct && ow.every(j => it.nbrSet.has(j))) continue;
     hits++;
   }
   return hits;
@@ -730,7 +999,7 @@ function columnClear(x, y, z0, z1, w, t, except) {
   for (const [dx, dy] of [[0, 0], [w, w], [-w, w], [w, -w], [-w, -w]]) for (let z = z0 + 1; z < z1; z += CS) {
     const k = cellKey(x + dx, y + dy, z);
     if (own && own.has(k)) continue;
-    const ct = cellTime.get(k); if (ct !== undefined && ct < t) return false;
+    const ct = occT(k); if (ct !== undefined && ct < t) return false;
   }
   return true;
 }
@@ -742,9 +1011,10 @@ for (const req of shoreReqs) {
   for (let pi = 0; pi < pts.length; pi++) {
     const k = pts[pi], it = req.its ? req.its[pi] : req.it;
     const [x, y, z] = cellAt(k), base0 = podiumTop(x, y);
+    if (!Number.isFinite(x + y + z)) continue; // not a real point (an empty request)
     let base = base0, clear = true;
     for (let zz = z - CS; zz > base0; zz -= CS) {
-      const ck = cellKey(x, y, zz), ct = cellTime.get(ck);
+      const ck = cellKey(x, y, zz), ct = occT(ck); // a tower may stand on a slab already poured
       if (ct === undefined) continue;
       if (ct < it.t0) { base = (Math.floor(zz / CS) + 1) * CS; break; }
       clear = false; break; // a later member would pass through the tower
@@ -887,25 +1157,30 @@ const rig = new THREE.Group();
 }
 scene.add(rig);
 // Slip-form collar riding up the core
-const coreIt = byPhase.cores.find(i => i.sub === 'core');
+const coreIt = byPhase.core.find(i => i.sub === 'core');
 const collar = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 7, 48, 1, true).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x6b5a45, roughness: 0.9, side: THREE.DoubleSide }));
 collar.position.set(coreIt.c.x, coreIt.c.y, 0); collar.castShadow = true; scene.add(collar);
 
 // Temporary shoring towers ------------------------------------------------------------------------
 // Positions and timing come from the erection planner above. Each tower goes up just ahead of the
 // member it carries and is struck (de-propped) once the outer shell grid has closed the structure.
-const SH_H = 100;
-const shoring = new THREE.InstancedMesh(latticeZ(SH_H, 7, 10, 0.75), new THREE.MeshStandardMaterial({ color: 0x8f989f, roughness: 0.5, metalness: 0.5 }), Math.max(1, shores.length));
-shoring.castShadow = true; scene.add(shoring);
+// Each tower is built to its own height (towers of a similar height share one geometry), so its
+// ledgers, diagonals and head beams keep their true proportions instead of being stretched.
+const shoreMat = new THREE.MeshStandardMaterial({ color: 0x9aa3a9, roughness: 0.42, metalness: 0.6 });
+const towerCache = new Map();
+for (const s of shores) {
+  const h = Math.max(6, Math.round(s.h));
+  if (!towerCache.has(h)) towerCache.set(h, shoreTowerGeo(h, 7));
+  s.mesh = new THREE.Mesh(towerCache.get(h), shoreMat);
+  s.mesh.position.set(s.x, s.y, s.base); s.mesh.castShadow = true; s.mesh.visible = false; scene.add(s.mesh);
+}
 function updateShoring(T) {
-  shores.forEach((s, i) => {
+  for (const s of shores) {
     const up = clamp01((T - s.tUp) / 1.4), down = clamp01((T - s.tDown) / 1.2);
     const f = ease(up) * (1 - ease(down));
-    tmpP.set(s.x, s.y, s.base);
-    tmpS.set(f > 0.001 ? 1 : 0.0001, f > 0.001 ? 1 : 0.0001, Math.max(0.0001, f * s.h / SH_H));
-    shoring.setMatrixAt(i, tmpM.compose(tmpP, tmpQ, tmpS));
-  });
-  shoring.instanceMatrix.needsUpdate = true;
+    s.mesh.visible = f > 0.001;
+    s.mesh.scale.set(1, 1, Math.max(0.001, f));
+  }
 }
 
 // Lattice helpers ---------------------------------------------------------------------------------
@@ -926,6 +1201,45 @@ function latticeZ(len, w, seg, t) { // square lattice along +z
       parts.push(strut(V(ax, ay, z), V(bx, by, z), t * 0.6));
     }
   }
+  return mergeGeometries(parts);
+}
+// Temporary works in round tube, as they are on site. tubeGeo runs a tube of radius r from a to b.
+function tubeGeo(a, b, r, seg = 8) {
+  const d = new THREE.Vector3().subVectors(b, a), len = d.length();
+  const g = new THREE.CylinderGeometry(r, r, len, seg, 1);
+  g.rotateX(Math.PI / 2); g.translate(0, 0, len / 2);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.normalize()));
+  return g.translate(a.x, a.y, a.z);
+}
+function boxGeo(sx, sy, sz, x, y, z) { return new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z); } // hoisted: the shoring above uses it
+// A propping tower h ft tall and w ft square, standing on its base at z = 0: base plates and screw
+// jacks, four corner standards, ledgers on every face at each lift, one diagonal per face per lift
+// alternating in direction, then U-head jacks carrying two primary beams and three cross bearers.
+function shoreTowerGeo(h, w) {
+  const V = (x, y, z) => new THREE.Vector3(x, y, z), hw = w / 2, parts = [];
+  const C = [[-hw, -hw], [hw, -hw], [hw, hw], [-hw, hw]];
+  const rP = Math.max(0.2, w * 0.03), rL = rP * 0.62, rD = rP * 0.5;
+  const head = 2.3, z0 = Math.min(1.0, h * 0.1), top = Math.max(z0 + 1, h - head);
+  const n = Math.max(1, Math.round((top - z0) / 6.5));
+  for (const [x, y] of C) {
+    parts.push(boxGeo(1.3, 1.3, 0.2, x, y, 0.1), tubeGeo(V(x, y, 0.2), V(x, y, z0), rP * 0.55, 6));
+    parts.push(tubeGeo(V(x, y, z0), V(x, y, top), rP, 8));
+    parts.push(tubeGeo(V(x, y, top), V(x, y, top + 0.8), rP * 0.55, 6));
+  }
+  for (let i = 0; i <= n; i++) {
+    const z = z0 + (top - z0) * i / n;
+    for (let c = 0; c < 4; c++) { const [ax, ay] = C[c], [bx, by] = C[(c + 1) % 4]; parts.push(tubeGeo(V(ax, ay, z), V(bx, by, z), rL, 6)); }
+  }
+  for (let i = 0; i < n; i++) {
+    const za = z0 + (top - z0) * i / n, zb = z0 + (top - z0) * (i + 1) / n;
+    for (let c = 0; c < 4; c++) {
+      const [ax, ay] = C[c], [bx, by] = C[(c + 1) % 4];
+      parts.push((i + c) % 2 ? tubeGeo(V(ax, ay, za), V(bx, by, zb), rD, 6) : tubeGeo(V(bx, by, za), V(ax, ay, zb), rD, 6));
+    }
+  }
+  const zb = top + 0.8;
+  for (const y of [-hw, hw]) parts.push(boxGeo(w + 2.6, 0.75, 0.9, 0, y, zb + 0.45));
+  for (const x of [-hw * 0.7, 0, hw * 0.7]) parts.push(boxGeo(0.6, w + 2, 0.55, x, 0, zb + 1.18));
   return mergeGeometries(parts);
 }
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -967,10 +1281,10 @@ for (const it of strutIts) {
     if (!columnClear(p.x, p.y, base, top - 2, 6, P.truss.t1 + 1.5, it)) continue;
     if (strutWorks.filter(w => w.strut === it).length >= 3) continue;
     const g = new THREE.Group();
-    const tower = new THREE.Mesh(latticeZ(h, 12, 10, 0.9), steelMat);
-    const saddle = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 2), new THREE.MeshStandardMaterial({ color: 0x55565a, roughness: 0.6, metalness: 0.4 }));
-    saddle.position.z = h + 1;
-    const sole = new THREE.Mesh(new THREE.BoxGeometry(18, 18, 0.8), saddle.material); sole.position.z = 0.4;
+    const tower = new THREE.Mesh(shoreTowerGeo(h, 12), shoreMat);
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 1.4), new THREE.MeshStandardMaterial({ color: 0x55565a, roughness: 0.6, metalness: 0.4 }));
+    saddle.position.z = h + 0.9;
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(18, 18, 0.8), new THREE.MeshStandardMaterial({ color: 0xb9b4aa, roughness: 0.9 })); sole.position.z = 0.4;
     for (const m of [tower, saddle, sole]) { m.castShadow = true; g.add(m); }
     g.position.set(p.x, p.y, base); g.visible = false; scene.add(g);
     const tDone = timeAtHeight(it.steel, top + 2); // in place before the H-beam splice above it is set
@@ -990,32 +1304,68 @@ if (strutIts.length === 2) {
     for (let i = 0; i <= n; i++) for (const dz of [-2.5, 0, 2.5]) {
       const p = a.clone().lerp(b, i / n), k = cellKey(p.x, p.y, p.z + dz);
       if (own1.has(k) || own2.has(k)) continue;
-      const ct = cellTime.get(k); if (ct !== undefined && ct < P.truss.t1 + 2) return false;
+      const ct = occT(k); if (ct !== undefined && ct < P.truss.t1 + 2) return false;
     }
     return true;
   };
   // The gap between the struts fills with the bowl and pavilion long before the deck is on, so
-  // lateral restraint comes from raking props on each strut's outer face, down to the podium.
+  // lateral restraint comes from raking props on each strut's outer face, down to the podium. Each
+  // is a pair of 20 inch steel tubes, splayed in plan so the pair is stable sideways and laced into one
+  // frame by rungs and diagonals, with bolted splices every 24 ft. At the top they pin to a clamp
+  // collar round the strut; at the foot they pin to a concrete thrust block on the podium.
+  const propMat = new THREE.MeshStandardMaterial({ color: 0x5d6870, roughness: 0.4, metalness: 0.6 });
+  const pinMat = new THREE.MeshStandardMaterial({ color: 0x3f4448, roughness: 0.5, metalness: 0.5 });
+  const blockMat = new THREE.MeshStandardMaterial({ color: 0xb9b4aa, roughness: 0.9 });
   planStats.braces = 0;
   for (const [s, other] of [[s1, s2], [s2, s1]]) {
     const side = Math.sign(s.c.y - other.c.y);
     let n = 0;
     for (const z of [205, 185, 225, 165, 245]) {
       if (n >= 2) break;
-      const top = s.axis.at(z).add(V3(0, side * s.axis.r, 0));
+      const top = s.axis.at(z).add(V3(0, side * (s.axis.r + 0.6), 0));
       const foot = V3(top.x + (n ? 18 : -18), top.y + side * 60, 0); foot.z = podiumTop(foot.x, foot.y);
-      if (!tieClear(top.clone().add(V3(0, side * 2, 0)), foot)) continue;
-      const d = top.clone().sub(foot), len = d.length(); d.normalize();
-      const brace = new THREE.Mesh(latticeZ(len, 4, 8, 0.7), steelMat);
-      brace.quaternion.setFromUnitVectors(V3(0, 0, 1), d); brace.position.copy(foot);
-      const shoe = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 1.2), new THREE.MeshStandardMaterial({ color: 0x55565a, roughness: 0.6 }));
-      shoe.position.copy(foot).add(V3(0, 0, 0.6));
-      const g = new THREE.Group(); g.add(brace); scene.add(g); scene.add(shoe);
-      brace.castShadow = shoe.castShadow = true; g.visible = shoe.visible = false;
+      const BH = 3.2, HX = 3.4, FX = 9; // thrust block height; half-spacing of the tubes at head and foot
+      const heads = [top.clone().add(V3(-HX, 0, 0)), top.clone().add(V3(HX, 0, 0))];
+      const feet = [foot.clone().add(V3(-FX, 0, BH)), foot.clone().add(V3(FX, 0, BH))];
+      if (!tieClear(heads[0].clone().add(V3(0, side * 2, 0)), feet[0]) || !tieClear(heads[1].clone().add(V3(0, side * 2, 0)), feet[1])) continue;
+      // the frame, built about its foot so it can rise from the block
+      const rel = (v) => v.clone().sub(foot), parts = [];
+      const len = heads[0].distanceTo(feet[0]);
+      for (let k = 0; k < 2; k++) {
+        parts.push(tubeGeo(rel(feet[k]), rel(heads[k]), 0.85, 16));
+        const d = heads[k].clone().sub(feet[k]).normalize();
+        for (let a = 24; a < len - 6; a += 24) { // bolted splice flanges
+          const c = feet[k].clone().addScaledVector(d, a);
+          parts.push(tubeGeo(rel(c.clone().addScaledVector(d, -0.3)), rel(c.clone().addScaledVector(d, 0.3)), 1.3, 16));
+        }
+      }
+      const NR = Math.max(3, Math.round(len / 13)); // lacing: rungs, with a diagonal in every panel
+      const at = (k, f) => feet[k].clone().lerp(heads[k], f);
+      for (let i = 1; i < NR; i++) {
+        const f = i / NR;
+        parts.push(tubeGeo(rel(at(0, f)), rel(at(1, f)), 0.32, 8));
+        parts.push(i % 2 ? tubeGeo(rel(at(0, f)), rel(at(1, (i + 1) / NR)), 0.26, 8) : tubeGeo(rel(at(1, f)), rel(at(0, (i + 1) / NR)), 0.26, 8));
+      }
+      const frame = new THREE.Mesh(mergeGeometries(parts), propMat);
+      frame.position.copy(foot);
+      // pins: clevis plates at both ends of each tube
+      const pinParts = [];
+      for (let k = 0; k < 2; k++) {
+        pinParts.push(boxGeo(2.6, 2.6, 1.0, feet[k].x - foot.x, feet[k].y - foot.y, BH + 0.5));
+        pinParts.push(boxGeo(2.2, 2.2, 2.2, heads[k].x - foot.x, heads[k].y - foot.y, heads[k].z - foot.z));
+      }
+      frame.add(new THREE.Mesh(mergeGeometries(pinParts), pinMat));
+      // the clamp collar round the strut, square to its axis
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(s.axis.r + 0.7, 0.6, 10, 56), pinMat);
+      collar.quaternion.setFromUnitVectors(V3(0, 0, 1), s.axis.dir); collar.position.copy(s.axis.at(z));
+      const block = new THREE.Mesh(new THREE.BoxGeometry(2 * FX + 8, 12, BH), blockMat);
+      block.position.copy(foot).add(V3(0, 0, BH / 2));
+      for (const m of [frame, collar, block]) { m.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; }); m.visible = false; scene.add(m); }
       const t1 = timeAtHeight(s.steel, z + 8) + 0.9;
-      strutWorks.push({ obj: brace, t0: t1 - 1.0, t1, kind: 'brace' });
-      strutWorks.push({ obj: shoe, t0: t1 - 1.2, t1: t1 - 0.9, kind: 'shoe' });
-      g.visible = true; n++; planStats.braces++;
+      strutWorks.push({ obj: block, t0: t1 - 1.5, t1: t1 - 1.1, kind: 'shoe' });
+      strutWorks.push({ obj: collar, t0: t1 - 1.3, t1: t1 - 0.9, kind: 'collar' });
+      strutWorks.push({ obj: frame, t0: t1 - 1.0, t1, kind: 'brace' });
+      n++; planStats.braces++;
     }
   }
 }
@@ -1036,7 +1386,8 @@ function updateStrutWorks(T) {
 
 // Tower cranes -------------------------------------------------------------------------------------
 // Two cranes, so the steel can be fed from both sides of the site. Crane A on the north side goes up
-// with the podium; crane B on the east side is erected for the core, struts and steel. B's mast is
+// with the foundations, to feed the slip-formed core; crane B on the east side is erected with the
+// podium for the struts and steel. B's mast is
 // shorter so A's jib oversails it, as cranes with overlapping jibs are set on site. Each lift is a
 // pure function of time, so the timeline can be scrubbed: the hook is lowered at the crane's laydown
 // yard and the load slung, it hoists clear, slews and trolleys out together, lowers the piece into
@@ -1085,7 +1436,7 @@ function makeCrane(cfg) {
 }
 const cranes = [
   makeCrane({ name: 'A', x: 330, y: 36, h: 450, jib: 400, cj: 105, yardA: Math.PI / 2, yardR: 82,
-    up: [P.podium.t0 + 0.5, P.podium.t0 + 0.5 + P.podium.d * 0.8], down: P.landscape.t0 + 0.4 }),
+    up: [P.caps.t0 + 0.5, P.caps.t0 + 0.5 + P.caps.d * 0.8], down: P.landscape.t0 + 0.4 }), // in time to feed the core
   makeCrane({ name: 'B', x: 584, y: -196, h: 385, jib: 340, cj: 95, yardA: 0, yardR: 74,
     up: [P.podium.t0 + 2, P.podium.t0 + 2 + P.podium.d * 0.6], down: P.landscape.t0 + 0.4 + P.landscape.d * 0.12 }),
 ];
@@ -1129,7 +1480,7 @@ for (const s of strutIts) {
   }
 }
 const cageTargets = [{ it: coreIt, xy: () => [coreIt.c.x, coreIt.c.y] }, ...strutIts.map(it => ({ it, xy: (z) => { const p = it.axis.at(z); return [p.x, p.y]; } }))];
-for (let t = P.podium.t1; t < P.cores.t1 - 1; t += 0.5) {
+for (let t = P.core.t0; t < P.cores.t1 - 1; t += 0.5) {
   for (const tg of cageTargets) {
     const it = tg.it, z = keyInterp(it.keys, t + 1.6);
     if (t + 1.6 > it.t1 - 0.4 || t < it.t0) continue;
@@ -1355,232 +1706,17 @@ const hoard = (() => {
   };
 })();
 
-// The modelled floor slabs (FLOOR SLAB.obj, packed into MODEL.slabs by build/slabs.mjs)
-const SLABS = await (async () => {
-  const S = window.MODEL.slabs; if (!S) return [];
-  const bytes = Uint8Array.from(atob(S.gz), c => c.charCodeAt(0));
-  const b = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-  const pos = new Float32Array(b, 0, S.nv * 3), idx = new Uint32Array(b, S.nv * 12);
-  return S.objects.map(o => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos.slice(o.v0 * 3, (o.v0 + o.v) * 3), 3));
-    g.setIndex(new THREE.BufferAttribute(idx.slice(o.i0, o.i0 + o.t * 3), 1));
-    return { ...o, geo: toCreasedNormals(g, Math.PI / 5) };
-  });
-})();
-// Slabs the slab model does not include, laid on the framing that carries them: the side slab on
-// the 277 ft floor beams, a slab along the top of the low outer extra truss, and a timber deck over
-// the glulam dome. Each is worked out on a 1.5 ft grid. The framing is drawn in plan with the height
-// of its top, small gaps are closed and enclosed areas filled, and the plan of any modelled slab
-// already at that level is cut out. Between members the surface is relaxed smooth from the member
-// tops (so the dome deck follows its ribs), and the stepped outline is smoothed into a curve.
-const DERIVED = (() => {
-  const G = 1.5;
-  const eachTri = (geo, fn) => {
-    const p = geo.attributes.position, ix = geo.index, n = ix ? ix.count : p.count;
-    for (let t = 0; t < n; t += 3) {
-      const v = [0, 1, 2].map(k => { const i = ix ? ix.getX(t + k) : t + k; return [p.getX(i), p.getY(i), p.getZ(i)]; });
-      fn(v[0], v[1], v[2]);
-    }
-  };
-  function make({ name, mat, groups, zr, slabZr, close, open = 0, ride = 0, radial = 0, maxSlope = 0, thick, minCells }) {
-    const its = items.filter(it => (it.o.groups || []).some(g => groups.includes(g)));
-    if (!its.length) return null;
-    const pad = close + 4;
-    let X0 = Infinity, Y0 = Infinity, X1 = -Infinity, Y1 = -Infinity;
-    for (const it of its) { X0 = Math.min(X0, it.o.min[0]); Y0 = Math.min(Y0, it.o.min[1]); X1 = Math.max(X1, it.o.max[0]); Y1 = Math.max(Y1, it.o.max[1]); }
-    X0 -= pad; Y0 -= pad;
-    const nx = Math.ceil((X1 + pad - X0) / G), ny = Math.ceil((Y1 + pad - Y0) / G), N = nx * ny;
-    const cell = (x, y) => { const i = Math.floor((x - X0) / G), j = Math.floor((y - Y0) / G); return i < 0 || j < 0 || i >= nx || j >= ny ? -1 : j * nx + i; };
-    // framing in plan, keeping the highest point in each cell
-    const top = new Float32Array(N).fill(-Infinity);
-    for (const it of its) eachTri(it.mesh.geometry, (a, b, c) => {
-      for (const [p, q] of [[a, b], [b, c], [c, a]]) {
-        const m = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) / 0.5));
-        for (let s = 0; s <= m; s++) {
-          const f = s / m, z = p[2] + (q[2] - p[2]) * f; if (z < zr[0] || z > zr[1]) continue;
-          const k = cell(p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f); if (k >= 0 && z > top[k]) top[k] = z;
-        }
-      }
-    });
-    // modelled slabs at this level, filled in plan
-    const taken = new Uint8Array(N);
-    for (const s of SLABS) {
-      if (s.max[2] < slabZr[0] || s.min[2] > slabZr[1]) continue;
-      eachTri(s.geo, (a, b, c) => {
-        const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]); if (Math.abs(d) < 1e-9) return;
-        const i0 = Math.floor((Math.min(a[0], b[0], c[0]) - X0) / G), i1 = Math.floor((Math.max(a[0], b[0], c[0]) - X0) / G);
-        const j0 = Math.floor((Math.min(a[1], b[1], c[1]) - Y0) / G), j1 = Math.floor((Math.max(a[1], b[1], c[1]) - Y0) / G);
-        for (let j = Math.max(0, j0); j <= Math.min(ny - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(nx - 1, i1); i++) {
-          const px = X0 + (i + 0.5) * G, py = Y0 + (j + 0.5) * G;
-          const l1 = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / d, l2 = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / d;
-          if (l1 >= -0.02 && l2 >= -0.02 && 1 - l1 - l2 >= -0.02) taken[j * nx + i] = 1;
-        }
-      });
-    }
-    // close gaps (square dilate then erode), then fill everything the outside cannot reach
-    const box = (src, r, isMax) => {
-      const a = new Uint8Array(N), out = new Uint8Array(N);
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        let v = isMax ? 0 : 1;
-        for (let d = -r; d <= r && v === (isMax ? 0 : 1); d++) { const ii = i + d; const s = ii < 0 || ii >= nx ? (isMax ? 0 : 1) : src[j * nx + ii]; if (isMax ? s : !s) v = isMax ? 1 : 0; }
-        a[j * nx + i] = v;
-      }
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        let v = isMax ? 0 : 1;
-        for (let d = -r; d <= r && v === (isMax ? 0 : 1); d++) { const jj = j + d; const s = jj < 0 || jj >= ny ? (isMax ? 0 : 1) : a[jj * nx + i]; if (isMax ? s : !s) v = isMax ? 1 : 0; }
-        out[j * nx + i] = v;
-      }
-      return out;
-    };
-    const F = new Uint8Array(N); for (let k = 0; k < N; k++) F[k] = top[k] > -Infinity || taken[k] ? 1 : 0;
-    const r = Math.max(1, Math.round(close / G));
-    const M = box(box(F, r, true), r, false);
-    const outside = new Uint8Array(N), stack = [];
-    for (let i = 0; i < nx; i++) stack.push(i, (ny - 1) * nx + i);
-    for (let j = 0; j < ny; j++) stack.push(j * nx, j * nx + nx - 1);
-    while (stack.length) {
-      const k = stack.pop(); if (outside[k] || M[k]) continue; outside[k] = 1;
-      const i = k % nx, j = (k - i) / nx;
-      if (i > 0) stack.push(k - 1); if (i < nx - 1) stack.push(k + 1); if (j > 0) stack.push(k - nx); if (j < ny - 1) stack.push(k + nx);
-    }
-    let filled = new Uint8Array(N); for (let k = 0; k < N; k++) filled[k] = outside[k] ? 0 : 1;
-    if (open) { const ro = Math.max(1, Math.round(open / G)); filled = box(box(filled, ro, false), ro, true); } // trims rib feet and spurs
-    const R = new Uint8Array(N); for (let k = 0; k < N; k++) R[k] = filled[k] && !taken[k] ? 1 : 0;
-    // keep pieces of a real size that the framing actually carries
-    const framedAt = new Uint8Array(N); for (let k = 0; k < N; k++) framedAt[k] = top[k] > -Infinity ? 1 : 0;
-    const prune = () => {
-      const comp = new Int32Array(N).fill(-1);
-      for (let k0 = 0; k0 < N; k0++) {
-        if (!R[k0] || comp[k0] >= 0) continue;
-        const cells = [], st = [k0]; comp[k0] = k0; let framed = 0;
-        while (st.length) {
-          const k = st.pop(); cells.push(k); framed += framedAt[k];
-          const i = k % nx, j = (k - i) / nx;
-          for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && R[n] && comp[n] < 0) { comp[n] = k0; st.push(n); }
-        }
-        if (cells.length < minCells || framed < cells.length * 0.08) for (const k of cells) R[k] = 0;
-      }
-    };
-    prune();
-    // A dome is decked as one smooth elliptical cap: its plan from the upper framing (the rib feet
-    // left out), its height from the dome's own profile, the highest member at each distance out.
-    let profileH = null;
-    if (radial) {
-      let zt = -Infinity, zb = Infinity; for (let k = 0; k < N; k++) if (top[k] > -Infinity) { zt = Math.max(zt, top[k]); zb = Math.min(zb, top[k]); }
-      const zc = zb + (zt - zb) * radial;
-      let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
-      for (let k = 0; k < N; k++) if (top[k] >= zc) { const i = k % nx, j = (k - i) / nx; ax0 = Math.min(ax0, i); ax1 = Math.max(ax1, i + 1); ay0 = Math.min(ay0, j); ay1 = Math.max(ay1, j + 1); }
-      const cx = (ax0 + ax1) / 2, cy = (ay0 + ay1) / 2, rx = (ax1 - ax0) / 2, ry = (ay1 - ay0) / 2;
-      const rho = (k) => { const i = k % nx, j = (k - i) / nx; return Math.hypot((i + 0.5 - cx) / rx, (j + 0.5 - cy) / ry); };
-      const B = 48, prof = new Array(B + 1).fill(-Infinity);
-      for (let k = 0; k < N; k++) if (top[k] >= zc) { const b = Math.min(B, Math.round(rho(k) * B)); prof[b] = Math.max(prof[b], top[k]); }
-      for (let b = 0; b <= B; b++) if (prof[b] === -Infinity) prof[b] = b ? prof[b - 1] : zt;
-      for (let b = 1; b <= B; b++) prof[b] = Math.min(prof[b], prof[b - 1]); // falls away from the crown
-      for (let pass = 0; pass < 3; pass++) for (let b = 1; b < B; b++) prof[b] = (prof[b - 1] + 2 * prof[b] + prof[b + 1]) / 4;
-      profileH = (k) => { const x = Math.min(B, rho(k) * B), b = Math.floor(x), f = x - b; return b >= B ? prof[B] : prof[b] * (1 - f) + prof[b + 1] * f; };
-      for (let k = 0; k < N; k++) R[k] = rho(k) <= 1 && !taken[k] ? 1 : 0;
-    }
-    // surface height: member tops where there are members, relaxed smooth in between. On a truss the
-    // slab rides the upper envelope (the highest top within `ride` feet), not the bottom chord.
-    if (ride) {
-      const rr = Math.max(1, Math.round(ride / G)), a = new Float32Array(N).fill(-Infinity), b = new Float32Array(N).fill(-Infinity);
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let m = -Infinity; for (let d = -rr; d <= rr; d++) { const ii = i + d; if (ii >= 0 && ii < nx) m = Math.max(m, top[j * nx + ii]); } a[j * nx + i] = m; }
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let m = -Infinity; for (let d = -rr; d <= rr; d++) { const jj = j + d; if (jj >= 0 && jj < ny) m = Math.max(m, a[jj * nx + i]); } b[j * nx + i] = m; }
-      top.set(b);
-    }
-    const H = new Float32Array(N); let sum = 0, cnt = 0;
-    for (let k = 0; k < N; k++) if (top[k] > -Infinity) { sum += top[k]; cnt++; }
-    if (!cnt) return null;
-    const fixed = new Uint8Array(N);
-    for (let k = 0; k < N; k++) { H[k] = top[k] > -Infinity ? top[k] : sum / cnt; fixed[k] = top[k] > -Infinity ? 1 : 0; }
-    if (profileH) for (let k = 0; k < N; k++) { if (R[k]) H[k] = profileH(k); fixed[k] = 0; }
-    const live = []; if (!profileH) for (let k = 0; k < N; k++) if (R[k] && !fixed[k]) live.push(k);
-    for (let it = 0; it < 400; it++) for (const k of live) {
-      const i = k % nx, j = (k - i) / nx; let s = 0, c = 0;
-      for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && (R[n] || fixed[n])) { s += H[n]; c++; }
-      if (c) H[k] = s / c;
-    }
-    // a light overall smoothing so the surface rides over the members instead of following every chord
-    const inR = []; for (let k = 0; k < N; k++) if (R[k]) inR.push(k);
-    for (let it = 0; it < 4; it++) {
-      const nh = new Float32Array(H);
-      for (const k of inR) {
-        const i = k % nx, j = (k - i) / nx; let s = H[k] * 2, c = 2;
-        for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && (R[n] || fixed[n])) { s += H[n]; c++; }
-        nh[k] = Math.max(H[k], s / c); // never sink below a member top
-      }
-      H.set(nh);
-    }
-    // a floor is near level: anything steeper than `maxSlope` is a fill draped down a gap, not a slab
-    if (maxSlope) {
-      const cut = [];
-      for (const k of inR) {
-        const i = k % nx, j = (k - i) / nx;
-        for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < ny - 1 ? k + nx : -1]) if (n >= 0 && R[n] && Math.abs(H[n] - H[k]) / G > maxSlope) { cut.push(k); break; }
-      }
-      for (const k of cut) R[k] = 0;
-      prune();
-    }
-    // plate mesh on the grid nodes, with the outline smoothed
-    const NX = nx + 1, nodeOf = new Int32Array(NX * (ny + 1)).fill(-1), P = [];
-    const node = (i, j) => { const n = j * NX + i; if (nodeOf[n] < 0) { nodeOf[n] = P.length; P.push([X0 + i * G, Y0 + j * G, 0, 0]); } return nodeOf[n]; };
-    const quads = [], edges = [];
-    let any = false;
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i; if (!R[k]) continue; any = true;
-      const q = [node(i, j), node(i + 1, j), node(i + 1, j + 1), node(i, j + 1)];
-      for (const v of q) { P[v][2] += H[k]; P[v][3]++; }
-      quads.push(q);
-      const inR = (ii, jj) => ii >= 0 && jj >= 0 && ii < nx && jj < ny && R[jj * nx + ii];
-      if (!inR(i, j - 1)) edges.push([q[0], q[1]]);
-      if (!inR(i + 1, j)) edges.push([q[1], q[2]]);
-      if (!inR(i, j + 1)) edges.push([q[2], q[3]]);
-      if (!inR(i - 1, j)) edges.push([q[3], q[0]]);
-    }
-    if (!any) return null;
-    for (const v of P) v[2] /= v[3];
-    const nb = new Map();
-    for (const [a, b] of edges) { (nb.get(a) || nb.set(a, []).get(a)).push(b); (nb.get(b) || nb.set(b, []).get(b)).push(a); }
-    for (let it = 0; it < 8; it++) {
-      const nxt = new Map();
-      for (const [v, ns] of nb) if (ns.length === 2) nxt.set(v, [(2 * P[v][0] + P[ns[0]][0] + P[ns[1]][0]) / 4, (2 * P[v][1] + P[ns[0]][1] + P[ns[1]][1]) / 4]);
-      for (const [v, [x, y]] of nxt) { P[v][0] = x; P[v][1] = y; }
-    }
-    const plate = (z0, t) => { // bottom at surface + z0, top at surface + z0 + t
-      const pos = [];
-      const vt = (v, up) => [P[v][0], P[v][1], P[v][2] + z0 + (up ? t : 0)];
-      for (const [a, b, c, d] of quads) {
-        pos.push(...vt(a, 1), ...vt(b, 1), ...vt(c, 1), ...vt(a, 1), ...vt(c, 1), ...vt(d, 1));
-        pos.push(...vt(a, 0), ...vt(c, 0), ...vt(b, 0), ...vt(a, 0), ...vt(d, 0), ...vt(c, 0));
-      }
-      for (const [a, b] of edges) pos.push(...vt(a, 0), ...vt(b, 0), ...vt(b, 1), ...vt(a, 0), ...vt(b, 1), ...vt(a, 1));
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      return toCreasedNormals(g, Math.PI / 4);
-    };
-    const geo = plate(0.05, thick); geo.computeBoundingBox();
-    const bb = geo.boundingBox;
-    return { name, mat, derived: true, geo, deckGeo: mat === 'wood' ? null : plate(-0.06, 0.1), min: bb.min.toArray(), max: bb.max.toArray() };
-  }
-  return [
-    make({ name: 'Side slab at 277 ft', mat: 'Default', groups: ['Group185', 'Group181'], zr: [272, 283], slabZr: [272, 283], close: 4.5, thick: 0.7, minCells: 60 }),
-    make({ name: 'Slab on the outer extra truss', mat: 'Default', groups: ['Group20'], zr: [170, 190], slabZr: [183, 194], close: 4.5, ride: 5, maxSlope: 0.3, thick: 0.7, minCells: 60 }),
-    make({ name: 'Timber deck over the glulam dome', mat: 'wood', groups: ['Group167'], zr: [200, 252], slabZr: [244, 252], close: 4.5, radial: 0.3, thick: 0.6, minCells: 60 }),
-  ].filter(Boolean);
-})();
 // Floor decking and concrete slabs. Each concrete slab gets metal decking laid across its beams
 // (a thin sheet under the slab's own outline), then the pour sweeps across it, dark while wet and
 // curing to grey. The timber floor and the deck over the glulam dome are laid as timber panels, with
-// no decking. The slabs go in from the lowest up, starting with the slab on the low outer extra truss.
+// no decking. Each starts at the time worked out above, as soon as the framing under it is complete;
+// a bigger slab takes a little longer to deck and pour.
 const decks = (() => {
   const out = [];
-  const lowZ = (s) => s.min[2];
   const plan = (s) => (s.max[0] - s.min[0]) * (s.max[1] - s.min[1]);
-  const schedule = (list, ph) => {
-    const wts = list.map(s => Math.sqrt(plan(s))), sum = wts.reduce((a, b) => a + b, 0);
-    let t = ph.t0 + 0.2;
-    list.forEach((s, i) => {
-      const w = (ph.d - 0.4) * wts[i] / sum, timber = s.mat === 'wood';
+  const schedule = (list) => {
+    list.forEach((s) => {
+      const t = s.tDeck, w = 2.2 + Math.min(1.6, Math.sqrt(plan(s)) / 160), timber = s.mat === 'wood';
       const z0 = s.min[2], z1 = s.max[2];
       const slabMat = new THREE.MeshStandardMaterial({ color: (timber ? COL.wood : COL.concrete).clone(), roughness: timber ? 0.75 : 0.9, side: THREE.DoubleSide });
       const slab = new THREE.Mesh(s.geo, slabMat);
@@ -1596,10 +1732,10 @@ const decks = (() => {
       out.push(timber
         ? { slab, ps, xa, xb, s0: t, s1: t + w * 0.9, slabMat, timber, name: s.name, derived: !!s.derived }
         : { deck, slab, pd, ps, xa, xb, d0: t, d1: t + w * 0.45, s0: t + w * 0.4, s1: t + w * 0.92, slabMat, name: s.name, derived: !!s.derived });
-      t += w;
+      Object.assign(out[out.length - 1], { tReady: s.tReady, carriedBy: s.carriedBy, z: Math.round(s.min[2]) });
     });
   };
-  schedule([...SLABS, ...DERIVED].sort((a, b) => lowZ(a) - lowZ(b) || plan(b) - plan(a)), P.decks);
+  schedule(ALL_SLABS.slice().sort((a, b) => a.tDeck - b.tDeck));
   return {
     update(T) {
       for (const L of out) {
@@ -1631,15 +1767,15 @@ const KEY = [];
 {
   const NAMES = {
     Group142: 'Pile caps and parking columns', Group47: 'H-beam, north raking column', Group48: 'H-beam, south raking column',
-    Group51: 'Core and raking columns', Group45: 'Primary truss', Group46: 'Secondary truss', Group99: 'First shell',
+    Group51: 'Raking columns', Group45: 'Primary truss', Group46: 'Secondary truss', Group99: 'First shell',
     Group156: 'Under-deck primary members', Group168: 'Under-deck primary members', Group115: 'Second shell',
     Group167: 'Glulam dome', Group147: 'Third shell', Group187: 'Floor beams at 205 ft', Group186: 'Floor beams at 235 ft',
     Group185: 'Floor beams at 277 ft', Group20: 'Extra trusses', Group152: 'Vent truss', Group153: 'Vent truss',
     Group26: 'Extra sides', Group176: 'Leg', Group150: 'Last shell', Group24: 'Skylight', Group28: 'ETFE frame',
   };
   const PLAIN = { mat: 'Mat foundations', cap: 'Pile caps and parking columns', wall: 'Shear walls', slab0: 'Parking slabs',
-    slab1: 'Parking slabs', slab2: 'Parking slabs', roof: 'Podium slab', misc: 'Podium slab', core: 'Core and raking columns',
-    strut: 'Core and raking columns', headc: 'Core and raking columns', strutsteel: 'Steel H-beams', head: 'Steel H-beams' };
+    slab1: 'Parking slabs', slab2: 'Parking slabs', roof: 'Podium slab', misc: 'Podium slab', core: 'Core',
+    strut: 'Raking columns', headc: 'Raking columns', strutsteel: 'Steel H-beams', head: 'Steel H-beams' };
   const byId = new Map();
   const keyFor = (id, name, rhino) => {
     if (!byId.has(id)) { const K = { id, name, rhino, items: [], slabs: [] }; byId.set(id, K); KEY.push(K); }
@@ -1652,7 +1788,10 @@ const KEY = [];
     return /^Group14[345]$/.test(t) ? 'Group142' : t; // three stray one-object groups at a corner cap
   };
   const live = items.filter(it => it.t0 !== undefined && it.phase !== 'landscape');
+  // the core is slip-formed on its own, well before the raking columns it shares a group with
+  for (const it of live) if (it.sub === 'core') { it.key = keyFor('core', 'Core', 'slip-formed'); it.key.items.push(it); }
   for (const it of live) {
+    if (it.key) continue;
     const t = topOf(it); if (!t) continue;
     it.key = keyFor(t, NAMES[t] || t.replace('Group', 'Group '), t.replace('Group', 'Group ')); it.key.items.push(it);
   }
