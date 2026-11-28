@@ -122,11 +122,12 @@ const easeOut = (x) => 1 - Math.pow(1 - clamp01(x), 3);
 // 2 is piling, pile caps and the core); the caption and timeline show steps, and each
 // phase supplies the line describing what is happening at that moment. Durations are seconds at 1×.
 // ---------------------------------------------------------------------------------------------
-// The core leads: it is slip-formed straight off its mat, ahead of the garage, so the garage floors
-// are built around a finished core. Floor slabs are not left to the end: each is decked and poured as
-// soon as the framing under it is in place, so the crews have a floor to work from before the steel
-// above it goes in (see the slab scheduling after the erection planner).
-const STEP_NAMES = [, 'Excavation & Site Boundary', 'Foundations & Core', 'Columns, Shear Walls & Slabs', 'Big Columns',
+// The three FECC columns lead: the core is slip-formed straight off its mat while the two raking
+// columns go up beside it, all ahead of the garage, so the garage floors are built around them. Floor
+// slabs are not left to the end: each is decked and poured as soon as the framing under it is in
+// place, so the crews have a floor to work from before the steel above it goes in (see the slab
+// scheduling after the erection planner).
+const STEP_NAMES = [, 'Excavation & Site Boundary', 'Foundations', 'Core & Big Columns', 'Columns, Shear Walls & Slabs',
   'Primary Truss', 'First Shell', 'Second Shell', 'Glulam Dome', 'Third Shell', 'Floor Beams & Secondary Truss',
   'Extra Trusses', 'Last Shell & Leg', 'Extra Sides & Buttresses',
   'Skylight & ETFE Structure', 'Site Completion'];
@@ -138,20 +139,18 @@ const PHASES = [
     desc: 'Bearing piles are driven at every column position and in groups under the core and the two strut foundations.' },
   { k: 'caps', step: 2, d: 5, view: [300, -180, 50, 560, 0.7],
     desc: 'Pile caps are poured column line by column line, with thick mat foundations for the core and both struts.' },
-  { k: 'core', step: 2, d: 10, view: [290, -175, 150, 900, 0.45],
-    desc: 'The core is slip-formed straight off its mat in one continuous climb, ahead of the garage, so the floors below can be built around it. The north tower crane goes up first and feeds it rebar cages as the form rises.' },
-  { k: 'cols', step: 3, d: 4, view: [300, -180, 70, 600, 0.62],
+  { k: 'core', step: 3, d: 16, view: [285, -172, 170, 1000, 0.42],
+    desc: 'All three FECC columns go up together, ahead of the garage. The core is slip-formed straight off its mat in one continuous climb while the H-beam steel for both raking columns goes up beside it in spliced lifts, propped on shoring towers from the pit floor and twin raking props from the ground outside the pit, with the heads set last. Both big columns are then poured around their steel as the core tops out.' },
+  { k: 'cols', step: 4, d: 4, view: [300, -180, 70, 600, 0.62],
     desc: 'The first lift of the parking columns is cast on the caps, up to the first parking level, column line by column line from west to east.' },
-  { k: 'parking', step: 3, d: 15, view: [300, -180, 70, 620, 0.6],
-    desc: 'The garage goes up a floor at a time around the finished core: the shear walls rise to each level and its slab is poured, then the columns are cast up to the next level, until they reach the podium.' },
-  { k: 'podium', step: 3, d: 6, view: [290, -175, 90, 680, 0.58],
-    desc: 'The podium slab is poured across the garage and the vehicle entrance is formed. The second tower crane goes up on the east side.' },
-  { k: 'cores', step: 4, d: 14, view: [280, -170, 180, 1000, 0.4],
-    desc: 'The H-beam steel for both raking columns goes up in spliced lifts, propped on shoring towers and twin raking props from the podium, with the heads set last. Then both big columns are poured around the completed steel.' },
+  { k: 'parking', step: 4, d: 15, view: [300, -180, 70, 620, 0.6],
+    desc: 'The garage goes up a floor at a time around the three columns, its slabs formed round the shoring towers: the shear walls rise to each level and its slab is poured, then the columns are cast up to the next level, until they reach the podium.' },
+  { k: 'podium', step: 4, d: 6, view: [290, -175, 90, 680, 0.58],
+    desc: 'The podium slab is poured across the garage and the vehicle entrance is formed.' },
   { k: 'truss', step: 5, d: 8, view: [300, -165, 250, 1050, 0.5],
     desc: 'The primary deck truss goes up between the core and the column heads: chords first, then verticals, then obliques. With it in, the column shoring is struck.' },
   { k: 'shell1', step: 6, d: 11, view: [280, -165, 240, 1150, 0.38],
-    desc: 'The first shell, working outward from its centre: the primary members under the deck, its primary group, then its secondary group.' },
+    desc: 'The primary members under the deck go in first. With the deck truss now carried, the main deck is decked and its slab poured, the first floor the crews can work from, then the first shell goes up from its centre outward: its primary group, then its secondary group.' },
   { k: 'shell2', step: 7, d: 8, view: [270, -165, 250, 1200, 0.38],
     desc: 'The second shell wraps the first: primary group, then secondary group.' },
   { k: 'pavilion', step: 8, d: 5, view: [300, -170, 220, 900, 0.46],
@@ -159,7 +158,7 @@ const PHASES = [
   { k: 'shell3', step: 9, d: 9, view: [270, -165, 260, 1200, 0.38],
     desc: 'The third shell goes on outside the second: primary group, then secondary group.' },
   { k: 'floors', step: 10, d: 8, view: [290, -165, 240, 1050, 0.5],
-    desc: 'The secondary truss members complete the deck truss, then the floor beam groups go in at 205, 235 and 277 ft. Each floor is decked and its slab poured as soon as the framing under it is in, starting with the main deck, so the crews have a floor to work from before the next steel goes up.' },
+    desc: 'The secondary truss members complete the deck truss, then the floor beam groups go in at 205, 235 and 277 ft. Each floor is decked and its slab poured immediately after its beams are in, so the crews have a floor to work from before the next steel goes up.' },
   { k: 'extras', step: 11, d: 8, view: [250, -170, 220, 1250, 0.42],
     desc: 'The extra trusses go in on shoring towers, with their sub-framing, then the vent trusses. The slabs on the extra trusses are decked and poured as soon as they are framed.' },
   { k: 'shell4', step: 12, d: 10, view: [260, -165, 260, 1300, 0.36],
@@ -402,7 +401,8 @@ function classify(o) {
 // Items: one per model object, each with a stateless apply(T) so the timeline can be scrubbed
 // ---------------------------------------------------------------------------------------------
 const items = [];
-const byPhase = Object.fromEntries([...PHASES.map(p => p.k), 'unassigned'].map(k => [k, []]));
+// 'cores' holds the raking columns, their steel and heads: they go up within the core phase
+const byPhase = Object.fromEntries([...PHASES.map(p => p.k), 'cores', 'unassigned'].map(k => [k, []]));
 const modelGroup = new THREE.Group(); scene.add(modelGroup);
 
 for (const o of meta.objects) {
@@ -573,7 +573,7 @@ for (const it of byPhase.core) {
 // completed steel, with the concrete heads cast last.
 const SPLICES = 3;
 {
-  const pc = P.cores, A = pc.t0, D = pc.d;
+  const pc = P.core, A = pc.t0, D = pc.d; // alongside the core's climb
   const steel = byPhase.cores.filter(i => i.sub === 'strutsteel').sort((a, b) => a.c.y - b.c.y);
   steel.forEach((it, si) => {
     const z0 = it.o.min[2], z1 = it.o.max[2] + 0.05, keys = [];
@@ -1015,12 +1015,21 @@ const slabTime = new Map(); // voxel → when its slab's metal deck goes down
         for (const n of o) { const it = items[n]; if (seen.has(it) || it.t1 === undefined || !CARRIES(it)) continue; seen.add(it); carry.set(it, (carry.get(it) || 0) + 1); }
       }
     }
-    const list = [...carry.entries()].sort((a, b) => a[0].t1 - b[0].t1), tot = list.reduce((a, [, c]) => a + c, 0);
-    let acc = 0; s.tReady = 0;
-    for (const [it, c] of list) { s.tReady = it.t1; acc += c; if (acc >= tot * 0.93) break; }
-    if (!tot) s.tReady = P.floors.t1; // nothing under it at all: after the floor framing
-    const ph = {}; for (const [it, c] of list) ph[it.phase] = (ph[it.phase] || 0) + c;
+    // Each slab is poured straight after the framing stage that carries most of it: the primary deck
+    // truss, a floor's beams and secondary truss, the extra trusses, the dome. It does not wait for
+    // framing from a later stage that only shares part of its edge. The main deck, on the primary
+    // truss, also waits for the under-deck primary members, which complete its support; it is then
+    // the first slab poured, before the first shell's own members go up.
+    const ph = {}; for (const [it, c] of carry) ph[it.phase] = (ph[it.phase] || 0) + c;
     s.carriedBy = ph;
+    const major = Object.entries(ph).filter(([k]) => k !== 'core' && k !== 'cores').sort((a, b) => b[1] - a[1])[0]?.[0];
+    const list = [...carry.entries()].filter(([it]) => it.phase === major).sort((a, b) => a[0].t1 - b[0].t1);
+    const tot = list.reduce((a, [, c]) => a + c, 0);
+    let acc = 0; s.tReady = 0;
+    for (const [it, c] of list) { s.tReady = it.t1; acc += c; if (acc >= tot * 0.97) break; }
+    if (!tot) s.tReady = P.floors.t1; // nothing under it at all: after the floor framing
+    if (major === 'truss') for (const it of items) if (/Under-deck/.test(it.layer?.name || '') && it.t1 > s.tReady) s.tReady = it.t1;
+    s.carrier = major;
   }
   let last = -Infinity;
   for (const s of ALL_SLABS.slice().sort((a, b) => a.tReady - b.tReady || a.min[2] - b.min[2])) {
@@ -1362,9 +1371,11 @@ for (const it of strutIts) {
   const under = r / Math.sqrt(1 - dir.z * dir.z) + 0.6; // vertical drop from axis to the underside
   for (const zA of [140, 160, 185, 205, 228]) {
     if (zA > t.z - 18) continue;
-    const p = it.axis.at(zA), top = zA - under, base = 99.2, h = top - base - 2;
-    // skip a spot where steel erected while the tower stands would pass through it
-    if (!columnClear(p.x, p.y, base, top - 2, 6, P.truss.t1 + 1.5, it)) continue;
+    // The columns now go up before the garage, so the towers stand on the pit floor and the garage
+    // slabs and podium are formed round them (blockouts), as they are on site.
+    const p = it.axis.at(zA), top = zA - under, base = FLOOR, h = top - base - 2;
+    // skip a spot where steel erected while the tower stands would pass through it (above the podium)
+    if (!columnClear(p.x, p.y, 99.2, top - 2, 6, P.truss.t1 + 1.5, it)) continue;
     if (strutWorks.filter(w => w.strut === it).length >= 3) continue;
     const g = new THREE.Group();
     const tower = new THREE.Mesh(shoreTowerGeo(h, 12), shoreMat);
@@ -1472,8 +1483,8 @@ function updateStrutWorks(T) {
 
 // Tower cranes -------------------------------------------------------------------------------------
 // Two cranes, so the steel can be fed from both sides of the site. Crane A on the north side goes up
-// with the foundations, to feed the slip-formed core; crane B on the east side is erected with the
-// podium for the struts and steel. B's mast is
+// with the foundations, to feed the slip-formed core; crane B on the east side follows it, for the
+// raking columns going up at the same time and then the steel. B's mast is
 // shorter so A's jib oversails it, as cranes with overlapping jibs are set on site. Each lift is a
 // pure function of time, so the timeline can be scrubbed: the hook is lowered at the crane's laydown
 // yard and the load slung, it hoists clear, slews and trolleys out together, lowers the piece into
@@ -1524,7 +1535,7 @@ const cranes = [
   makeCrane({ name: 'A', x: 330, y: 36, h: 450, jib: 400, cj: 105, yardA: Math.PI / 2, yardR: 82,
     up: [P.caps.t0 + 0.5, P.caps.t0 + 0.5 + P.caps.d * 0.8], down: P.landscape.t0 + 0.4 }), // in time to feed the core
   makeCrane({ name: 'B', x: 584, y: -196, h: 385, jib: 340, cj: 95, yardA: 0, yardR: 74,
-    up: [P.podium.t0 + 2, P.podium.t0 + 2 + P.podium.d * 0.6], down: P.landscape.t0 + 0.4 + P.landscape.d * 0.12 }),
+    up: [P.caps.t0 + 2, P.caps.t0 + 2 + P.caps.d * 0.6], down: P.landscape.t0 + 0.4 + P.landscape.d * 0.12 }), // for the raking columns' steel
 ];
 for (const c of cranes) { c.ready = c.up[1] + 0.3; c.free = c.ready - RET_MIN; }
 
@@ -1566,7 +1577,7 @@ for (const s of strutIts) {
   }
 }
 const cageTargets = [{ it: coreIt, xy: () => [coreIt.c.x, coreIt.c.y] }, ...strutIts.map(it => ({ it, xy: (z) => { const p = it.axis.at(z); return [p.x, p.y]; } }))];
-for (let t = P.core.t0; t < P.cores.t1 - 1; t += 0.5) {
+for (let t = P.core.t0; t < P.core.t1 - 1; t += 0.5) {
   for (const tg of cageTargets) {
     const it = tg.it, z = keyInterp(it.keys, t + 1.6);
     if (t + 1.6 > it.t1 - 0.4 || t < it.t0) continue;
@@ -1823,7 +1834,7 @@ const decks = (() => {
       out.push(timber
         ? { slab, ps, xa, xb, s0: t, s1: t + w * 0.9, slabMat, timber, name: s.name, derived: !!s.derived }
         : { deck, slab, pd, ps, xa, xb, d0: t, d1: t + w * 0.45, s0: t + w * 0.4, s1: t + w * 0.92, slabMat, name: s.name, derived: !!s.derived });
-      Object.assign(out[out.length - 1], { tReady: s.tReady, carriedBy: s.carriedBy, z: Math.round(s.min[2]) });
+      Object.assign(out[out.length - 1], { tReady: s.tReady, carriedBy: s.carriedBy, carrier: s.carrier, z: Math.round(s.min[2]) });
     });
   };
   schedule(ALL_SLABS.slice().sort((a, b) => a.tDeck - b.tDeck));
@@ -1963,7 +1974,8 @@ function paint(T) {
     setOpacity(it.mesh, opOf(K));
   }
   for (const K of KEY) for (const s of K.slabs) {
-    paintColour(s.slabMat, K, s.timber ? s.slabMat.userData.base || COL.wood : realTmp.copy(s.slabMat.color), T);
+    // slabs are poured one by one across the programme: each is highlighted only while its own pour is on
+    paintColour(s.slabMat, { t0: s.d0 ?? s.s0, done: s.s1, color: K.color }, s.timber ? s.slabMat.userData.base || COL.wood : realTmp.copy(s.slabMat.color), T);
     for (const mesh of [s.slab, s.deck]) if (mesh) setOpacity(mesh, opOf(K));
   }
 }
