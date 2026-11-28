@@ -1853,6 +1853,184 @@ const decks = (() => {
 })();
 
 planStats.slabs = decks.count; planStats.derivedSlabs = DERIVED.map(s => `${s.name} ${Math.round(s.min[2])}-${Math.round(s.max[2])}`).join('; ');
+
+// Reinforcement -------------------------------------------------------------------------------------
+// Every concrete element is reinforced, and its steel shows while it is being fixed and poured, as on
+// site: a cage stands ahead of each column, wall and the core as the concrete rises through it (the
+// core's cage about ten feet above the slip-form), and each slab's mat is laid on its deck or
+// formwork just before the pour sweeps over it. Once the concrete is placed the bars are inside it
+// and are no longer drawn. Spacing is real: 12 in for walls, the core and column cages, 18 in for the
+// slab and mat grids, ties and hoops at 18 in. Bars are drawn a little heavier than life (1.5 in
+// main bars, 1 in ties) so they read at site scale.
+const rebar = (() => {
+  const mat0 = new THREE.MeshStandardMaterial({ color: 0x6e4a35, roughness: 0.55, metalness: 0.35 });
+  const MAIN = 0.065, TIE = 0.045, COVER = 0.3; // half-widths and cover, ft
+  const els = [];
+  // a batch of square bars, built straight into one buffer
+  class Bars {
+    constructor() { this.p = []; this.i = []; }
+    add(a, b, r = MAIN) {
+      const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0], d[1], d[2]); if (L < 0.05) return;
+      const u = d.map(x => x / L), ref = Math.abs(u[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+      let n1 = [u[1] * ref[2] - u[2] * ref[1], u[2] * ref[0] - u[0] * ref[2], u[0] * ref[1] - u[1] * ref[0]];
+      const l1 = Math.hypot(...n1); n1 = n1.map(x => x / l1);
+      const n2 = [u[1] * n1[2] - u[2] * n1[1], u[2] * n1[0] - u[0] * n1[2], u[0] * n1[1] - u[1] * n1[0]];
+      const base = this.p.length / 3;
+      for (const [s1, s2] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) for (const e of [a, b])
+        this.p.push(e[0] + (n1[0] * s1 + n2[0] * s2) * r, e[1] + (n1[1] * s1 + n2[1] * s2) * r, e[2] + (n1[2] * s1 + n2[2] * s2) * r);
+      for (let k = 0; k < 4; k++) { const a0 = base + 2 * k, a1 = base + 2 * ((k + 1) % 4); this.i.push(a0, a1, a1 + 1, a0, a1 + 1, a0 + 1); }
+    }
+    ring(c, e1, e2, rad, n, r = TIE) { // a closed hoop of n straight pieces
+      let prev = null;
+      for (let k = 0; k <= n; k++) {
+        const a = k / n * Math.PI * 2, q = [0, 1, 2].map(j => c[j] + (e1[j] * Math.cos(a) + e2[j] * Math.sin(a)) * rad);
+        if (prev) this.add(prev, q, r); prev = q;
+      }
+    }
+    mesh() {
+      if (!this.i.length) return null;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+      g.setIndex(this.p.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(this.i, 1) : new THREE.Uint16BufferAttribute(this.i, 1));
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, mat0.clone()); m.visible = false; m.frustumCulled = true; scene.add(m);
+      return m;
+    }
+  }
+  // register an element: shown from v0 to v1; `top(T)` (optional) clips it to a height
+  const add = (bars, v0, v1, top) => {
+    const mesh = bars.mesh(); if (!mesh) return;
+    const plane = top ? zPlane(mesh.material) : null;
+    els.push({ mesh, v0, v1, top, plane, n: bars.i.length / 24 });
+  };
+  const grow = (it, lead) => (T) => (it.clipZ ?? it.o.min[2]) + lead;
+
+  // The core: a hollow cylinder with a 2 ft wall. Vertical bars at 12 in on both faces, hoops at 18 in.
+  {
+    const it = coreIt, pos = it.mesh.geometry.attributes.position; let rmin = Infinity, rmax = 0;
+    for (let i = 0; i < pos.count; i++) { const r = Math.hypot(pos.getX(i) - it.c.x, pos.getY(i) - it.c.y); rmin = Math.min(rmin, r); rmax = Math.max(rmax, r); }
+    const bars = new Bars(), z0 = it.o.min[2] + 0.5, z1 = it.o.max[2] - 0.5;
+    // 9 in cover: the cylinder is faceted, so its flat faces sit a little inside the measured radius
+    const faces = rmax - rmin > 1.2 ? [rmax - 0.75, rmin + 0.75] : [rmax - 0.75];
+    for (const R of faces) {
+      const n = Math.round(2 * Math.PI * R);
+      for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, x = it.c.x + Math.cos(a) * R, y = it.c.y + Math.sin(a) * R; bars.add([x, y, z0], [x, y, z1]); }
+      for (let z = z0 + 0.4; z < z1; z += 1.5) bars.ring([it.c.x, it.c.y, z], [1, 0, 0], [0, 1, 0], R + (R > rmin + 1 ? -0.15 : 0.15), 48);
+    }
+    add(bars, it.t0 - 0.6, it.t1 + 0.3, grow(it, 10));
+  }
+  // The raking columns: a longitudinal cage round the H-beam, bars at about 12 in, hoops at 18 in
+  // square to the column's rake.
+  for (const s of strutIts) {
+    const { b, t, dir, r } = s.axis, R = r - 0.6;
+    const ref = Math.abs(dir.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+    const e1 = new THREE.Vector3().crossVectors(dir, ref).normalize(), e2 = new THREE.Vector3().crossVectors(dir, e1);
+    const bars = new Bars(), L = b.distanceTo(t), n = Math.round(2 * Math.PI * R);
+    for (let k = 0; k < n; k++) {
+      const a = k / n * Math.PI * 2, off = e1.clone().multiplyScalar(Math.cos(a) * R).addScaledVector(e2, Math.sin(a) * R);
+      bars.add(b.clone().add(off).toArray(), t.clone().add(off).toArray());
+    }
+    for (let d = 0.6; d < L - 0.6; d += 1.5) bars.ring(b.clone().addScaledVector(dir, d).toArray(), e1.toArray(), e2.toArray(), R - 0.15, 40);
+    add(bars, s.t0 - 1.2, s.t1 + 0.3, grow(s, 10));
+  }
+  // Parking columns: eight bars and ties at 18 in, with starter bars standing above each lift.
+  for (const it of items.filter(i => i.sub === 'col')) {
+    const o = it.o, x0 = o.min[0] + COVER, x1 = o.max[0] - COVER, y0 = o.min[1] + COVER, y1 = o.max[1] - COVER, xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+    const bars = new Bars(), z0 = o.min[2] + 0.2, z1 = o.max[2] - 0.2;
+    for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [xm, y0], [x1, ym], [xm, y1], [x0, ym]]) bars.add([x, y, z0], [x, y, z1]);
+    for (let z = z0 + 0.5; z < z1; z += 1.5) { const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; for (let k = 0; k < 4; k++) bars.add([...c[k], z], [...c[(k + 1) % 4], z], TIE); }
+    add(bars, it.t0 - 0.4, it.t1 + 0.3, grow(it, 3.5));
+  }
+  // Shear walls: two faces, vertical and horizontal bars at 12 in.
+  for (const it of items.filter(i => i.sub === 'wall')) {
+    const o = it.o, dx = o.max[0] - o.min[0], dy = o.max[1] - o.min[1], alongX = dx >= dy;
+    const th = alongX ? dy : dx, mid = alongX ? (o.min[1] + o.max[1]) / 2 : (o.min[0] + o.max[0]) / 2;
+    const s0 = (alongX ? o.min[0] : o.min[1]) + COVER, s1 = (alongX ? o.max[0] : o.max[1]) - COVER, z0 = o.min[2] + 0.3, z1 = o.max[2] - 0.3;
+    const P = (s, f, z) => alongX ? [s, f, z] : [f, s, z];
+    const bars = new Bars();
+    for (const f of [mid - th / 2 + COVER, mid + th / 2 - COVER]) {
+      for (let s = s0; s <= s1; s += 1) bars.add(P(s, f, z0), P(s, f, z1));
+      for (let z = z0 + 0.5; z < z1; z += 1) bars.add(P(s0, f + (f < mid ? 0.13 : -0.13), z), P(s1, f + (f < mid ? 0.13 : -0.13), z), TIE + 0.01);
+    }
+    add(bars, it.t0 - 0.4, it.t1 + 0.3, grow(it, 4));
+  }
+  // Slabs and mats: a two-way grid at 18 in, laid at the slab's own surface (so it follows a curved
+  // deck), in 9 ft pieces that each take the surface height at their ends.
+  const G = 1.5;
+  function surface(geo) { // height of the up-facing surface on a G grid
+    const p = geo.attributes.position, ix = geo.index, n = ix ? ix.count : p.count;
+    let X0 = Infinity, Y0 = Infinity, X1 = -Infinity, Y1 = -Infinity;
+    for (let i = 0; i < p.count; i++) { X0 = Math.min(X0, p.getX(i)); X1 = Math.max(X1, p.getX(i)); Y0 = Math.min(Y0, p.getY(i)); Y1 = Math.max(Y1, p.getY(i)); }
+    const nx = Math.ceil((X1 - X0) / G) + 1, ny = Math.ceil((Y1 - Y0) / G) + 1, H = new Float32Array(nx * ny).fill(-Infinity);
+    const v = (k) => { const j = ix ? ix.getX(k) : k; return [p.getX(j), p.getY(j), p.getZ(j)]; };
+    for (let t = 0; t < n; t += 3) {
+      const a = v(t), b = v(t + 1), c = v(t + 2);
+      const nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = c[0] - a[0], wy = c[1] - a[1], wz = c[2] - a[2];
+      const nn = Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, nz); if (!nn || Math.abs(nz) / nn < 0.5) continue; // walls and edges
+      const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+      const i0 = Math.floor((Math.min(a[0], b[0], c[0]) - X0) / G), i1 = Math.ceil((Math.max(a[0], b[0], c[0]) - X0) / G);
+      const j0 = Math.floor((Math.min(a[1], b[1], c[1]) - Y0) / G), j1 = Math.ceil((Math.max(a[1], b[1], c[1]) - Y0) / G);
+      for (let j = Math.max(0, j0); j <= Math.min(ny - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(nx - 1, i1); i++) {
+        const px = X0 + i * G, py = Y0 + j * G;
+        const l1 = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / d, l2 = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / d, l3 = 1 - l1 - l2;
+        if (l1 < -0.01 || l2 < -0.01 || l3 < -0.01) continue;
+        const z = l1 * a[2] + l2 * b[2] + l3 * c[2], k = j * nx + i; if (z > H[k]) H[k] = z;
+      }
+    }
+    return { X0, Y0, nx, ny, H };
+  }
+  function grid(bars, S, drop, r = MAIN) { // both directions, `drop` ft below the surface
+    const { X0, Y0, nx, ny, H } = S;
+    const run = (count, len, at) => { // walk one line of cells: one bar while the surface stays level, a new piece where it climbs
+      let start = -1;
+      for (let k = 0; k <= len; k++) {
+        const h = k < len ? H[at(k)] : -Infinity, ok = h > -Infinity && (start < 0 || Math.abs(h - H[at(k - 1)]) < 0.8);
+        if (ok && start < 0) start = k;
+        if (start >= 0 && (!ok || k - start >= 60 || Math.abs(h - H[at(start)]) > 0.2)) {
+          const end = ok ? k : k - 1;
+          if (end > start) bars.add(count(start, H[at(start)] - drop), count(end, H[at(end)] - drop), r);
+          start = ok ? k : -1;
+        }
+      }
+    };
+    for (let j = 0; j < ny; j++) run((k, z) => [X0 + k * G, Y0 + j * G, z], nx, (k) => j * nx + k);
+    for (let i = 0; i < nx; i++) run((k, z) => [X0 + i * G, Y0 + k * G, z + 0.13], ny, (k) => k * nx + i);
+  }
+  // parking slabs and the podium: laid on the formwork just before each pour
+  for (const it of items.filter(i => ['slab0', 'slab1', 'slab2', 'roof'].includes(i.sub))) {
+    const bars = new Bars(); grid(bars, surface(it.mesh.geometry), 0.35); add(bars, it.t0 - 0.8, it.t1 + 0.3);
+  }
+  // the floor slabs on their metal deck, after the deck is down and before the pour
+  for (const L of decks.slabs) {
+    if (L.timber) continue;
+    const bars = new Bars(); grid(bars, surface(L.slab.geometry), 0.3); add(bars, L.d1 - 0.2, L.s1 + 0.3);
+  }
+  // mat foundations: a top and a bottom mat; pile caps: a bottom grid each, all in one batch
+  for (const it of items.filter(i => i.sub === 'mat')) {
+    const S = surface(it.mesh.geometry), bars = new Bars(), depth = it.o.max[2] - it.o.min[2];
+    grid(bars, S, 0.4); grid(bars, S, depth - 0.5); add(bars, it.t0 - 0.8, it.t1 + 0.2);
+  }
+  {
+    const bars = new Bars(); let t0 = Infinity, t1 = -Infinity;
+    for (const it of items.filter(i => i.sub === 'cap')) {
+      const o = it.o, z = o.min[2] + 0.4; t0 = Math.min(t0, it.t0); t1 = Math.max(t1, it.t1);
+      for (let x = o.min[0] + COVER; x <= o.max[0] - COVER + 1e-6; x += 1) bars.add([x, o.min[1] + COVER, z], [x, o.max[1] - COVER, z]);
+      for (let y = o.min[1] + COVER; y <= o.max[1] - COVER + 1e-6; y += 1) bars.add([o.min[0] + COVER, y, z + 0.13], [o.max[0] - COVER, y, z + 0.13]);
+    }
+    if (t0 < t1) add(bars, t0 - 0.8, t1 + 0.3);
+  }
+  return {
+    update(T) {
+      for (const e of els) {
+        e.mesh.visible = T >= e.v0 && T < e.v1;
+        if (e.mesh.visible && e.plane) e.plane.constant = e.top(T);
+      }
+    },
+    count: els.reduce((a, e) => a + e.n, 0), elements: els.length,
+  };
+})();
+planStats.rebar = rebar.count + ' bars in ' + rebar.elements + ' elements';
 planStats.hoarding = hoard.rect.map(v => Math.round(v)).join(',');
 
 // Group key. Built work always shows in its real material, fully solid, so the skeleton builds up
@@ -2038,7 +2216,7 @@ function frame() {
   updateCranes(T);
   for (const it of items) it.apply(T);
   updateSpoil(T); updateSoldiers(T); updateShoring(T); updateStrutWorks(T); updateLayerLine(T);
-  hoard.update(T); decks.update(T); paint(T); updateKey(T);
+  hoard.update(T); decks.update(T); rebar.update(T); paint(T); updateKey(T);
   const act = updatePiles(T);
   rig.visible = !!act;
   if (act) rig.position.set(act[0], act[1], FLOOR + 1.2);
